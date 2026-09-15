@@ -411,13 +411,39 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
    adjudication once; persist `marketSource` and the trace on every row.
 3. **New Property flow** here, replacing Inspire's free-text code field. `Property.code`
    stays as the column in Inspire; it now only ever receives an issued code.
-4. **Groups + grants schema.** `PropertyGroup`, `PropertyGroupMember`, `grant`. Migrate
-   Inspire's `UserPropertyRole` → `grant` at `property` scope; migrate InspiredREV's
-   `AccessGrant` `brand` rows → `group` scope against rule-backed brand groups.
-5. **Role catalog out of the enum**, into data, with packs and versions. Inspire's
-   `RANK` and `MODULE_ACCESS` become seed data here. **The users who do not fit a
-   template are the finding** — that list is the current access sprawl, and it is worth
+4. **Grants schema — PARTLY DONE 2026-09-15.** `person`, `role`, `permission`, `grant` and
+   `audit_event` are built, with temporal grants and polymorphic scope. `npm run sunrise`
+   creates the first account and refuses once any person exists; from People, that account
+   provisions everyone else and can grant `owner`, so admin rights propagate without a second
+   bootstrap path. Verified end to end: migrate → seed → sunrise → sign in → create users.
+
+   Three things the implementation settled:
+
+   - **The firewall is enforced at grant time.** `permission.scopeMax` caps `ar.view`,
+     `ar.manage` and `folio.post` at `property`, and `grantAccess` refuses any role carrying
+     them at wider scope. A one-property group still counts as above property — cardinality is
+     not the test, being a set is, and that bypass has a test of its own.
+   - **The session guard is a layout, not middleware.** Middleware runs without a database, so
+     it can confirm a token parses but not whether the person is still active or still holds
+     anything. Resolving grants per request is the difference between revoking access and
+     waiting out a token.
+   - **Request-bound code is separated from the rules.** `auth/actor.ts` reads the session;
+     `auth/access.ts` does not, because anything reaching `next/headers` cannot be loaded by a
+     CLI. `test/cli-imports.test.ts` walks the import graph and fails on any bundler-only
+     specifier, after this broke sunrise once.
+
+   **Still open in this step: `PropertyGroup` and `PropertyGroupMember`.** The `group` scope
+   exists and resolves; nothing can be granted at it yet because no groups exist. That is §2.2,
+   and it is the piece that makes regions answerable.
+
+5. **Role catalog out of the enum** — done for the console, open for Inspire. The catalog and
+   its versioning live here now (`src/auth/catalog.ts`, seeded by `npm run db:seed`), and the
+   A/R permissions are seeded capped so Inspire inherits the cap when it migrates. What remains
+   is the migration itself: Inspire's `Role` enum, `RANK` and `MODULE_ACCESS` become rows here,
+   and its `UserPropertyRole` rows become `grant`s at `property` scope. **The users who do not
+   fit a template are the finding** — that list is the current access sprawl, and it is worth
    reading before finalizing the packs.
+
 6. **Invert the directory sync** (§6). Highest-risk step; shadow it — populate mirrors
    and compare against live before cutover.
 7. **Strip the PMS screens** from Inspire's `/corporate`.
