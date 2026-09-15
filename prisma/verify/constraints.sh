@@ -12,6 +12,30 @@ PSQL="${PSQL:-psql -h /tmp -p 5433 -U postgres -d console_test}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 pass=0; fail=0
 
+# ── refuse to run against anything that is not a throwaway ─────────────────
+# ddl.sql opens with DROP TABLE IF EXISTS. Pointed at a real registry this
+# destroys it, and a registry is the one thing in this system that cannot be
+# rebuilt from anywhere else (G3 — retired codes exist nowhere but here).
+# So: the target must be a local server AND its database name must end in
+# _test or _dev. Override with ALLOW_DESTRUCTIVE=1 only if you mean it.
+if [ "${ALLOW_DESTRUCTIVE:-0}" != "1" ]; then
+  target=$($PSQL -tAq -c "SELECT current_database() || '|' || coalesce(host(inet_server_addr()), 'local');" 2>&1)
+  db="${target%%|*}"; host="${target##*|}"
+  case "$db" in
+    *_test|*_dev|console_test) ;;
+    *) echo "REFUSING: target database '$db' is not named like a throwaway (*_test / *_dev)."
+       echo "This script DROPS every registry table. Set ALLOW_DESTRUCTIVE=1 to override."
+       exit 1 ;;
+  esac
+  case "$host" in
+    local|127.0.0.1|::1|localhost) ;;
+    *) echo "REFUSING: target server '$host' is not local."
+       echo "This script DROPS every registry table. Set ALLOW_DESTRUCTIVE=1 to override."
+       exit 1 ;;
+  esac
+  echo "Target: $db on $host (throwaway — ok to drop)"
+fi
+
 ok()   { echo "  PASS  $1"; pass=$((pass+1)); }
 bad()  { echo "  FAIL  $1"; echo "        $2"; fail=$((fail+1)); }
 
