@@ -10,3 +10,4 @@ dist/
 !.env.example
 prisma/*.db
 tsconfig.tsbuildinfo
+next-env.d.ts
