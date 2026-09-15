@@ -386,7 +386,10 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
      every write path also translates Prisma's `P2002` into `ConflictError` — which `issueCode`
      already retries. `prisma/verify/constraints.sh` proves this against a real server, including
      two genuinely concurrent writers racing for one code: exactly one wins, and the loser is
-     refused by the primary key.
+     refused by the primary key. The harness applies the newest
+     `prisma/migrations/*/migration.sql` rather than a hand-written copy of the schema, so it
+     always tests the shape Prisma actually creates, and it refuses to run against anything
+     but a local `*_test`/`*_dev` database.
 
    Tests use Node's built-in runner (`node --test`) rather than vitest, deliberately: the suite then
    needs no test dependency at all and runs under Node's type stripping. It is a divergence from
