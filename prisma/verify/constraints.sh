@@ -7,15 +7,18 @@
 #
 #   PSQL="psql -h /tmp -p 5433 -U postgres -d console_test" ./constraints.sh
 #
+# The schema comes from the newest prisma/migrations/*/migration.sql.
+#
 set -uo pipefail
 PSQL="${PSQL:-psql -h /tmp -p 5433 -U postgres -d console_test}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 pass=0; fail=0
 
 # ── refuse to run against anything that is not a throwaway ─────────────────
-# ddl.sql opens with DROP TABLE IF EXISTS. Pointed at a real registry this
-# destroys it, and a registry is the one thing in this system that cannot be
-# rebuilt from anywhere else (G3 — retired codes exist nowhere but here).
+# This script drops every registry table before rebuilding. Pointed at a real
+# registry that destroys it, and a registry is the one thing in this system
+# that cannot be rebuilt from anywhere else (G3 — retired codes exist nowhere
+# but the inn_code ledger).
 # So: the target must be a local server AND its database name must end in
 # _test or _dev. Override with ALLOW_DESTRUCTIVE=1 only if you mean it.
 if [ "${ALLOW_DESTRUCTIVE:-0}" != "1" ]; then
@@ -65,8 +68,17 @@ seed_property() { # id, code, market, submarket
                VALUES ('$2','$1','BYX Collection Evansville','BC','BYX Collection','MAZ','$3','Evansville','IN','$4','active','2026-09-15','$2');" >/dev/null
 }
 
-echo "Resetting schema…"
-$PSQL -v ON_ERROR_STOP=1 -q -f "$HERE/ddl.sql" >/dev/null || { echo "DDL failed"; exit 1; }
+# Rebuild from the REAL migration, not a copy of it. If Prisma's generated
+# schema ever stops matching what these cases assume, they fail here rather
+# than silently proving something about a shape that no longer ships.
+MIGRATION=$(ls -d "$HERE"/../migrations/*/migration.sql 2>/dev/null | sort | tail -1)
+if [ -z "$MIGRATION" ]; then
+  echo "No migration found. Run: npx prisma migrate dev --name init"
+  exit 1
+fi
+echo "Resetting schema from $(basename "$(dirname "$MIGRATION")")…"
+$PSQL -v ON_ERROR_STOP=1 -q -f "$HERE/reset.sql" >/dev/null || { echo "reset failed"; exit 1; }
+$PSQL -v ON_ERROR_STOP=1 -q -f "$MIGRATION" >/dev/null || { echo "migration failed to apply"; exit 1; }
 
 echo
 echo "G3/G8 — a code is claimed exactly once, forever"
