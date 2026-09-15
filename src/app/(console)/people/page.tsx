@@ -2,6 +2,7 @@ import { prisma } from '../../../db.ts';
 import { currentActor, permissionsAt } from '../../../auth/access.ts';
 import { ROLES } from '../../../auth/catalog.ts';
 import { ProvisionForms } from './provision-forms.tsx';
+import { RevokeButton } from './revoke-button.tsx';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +76,7 @@ export default async function PeoplePage() {
                       since {g.effectiveFrom.toISOString().slice(0, 10)}
                       {g.grantedBy ? ` · by ${g.grantedBy.name}` : ' · sunrise'}
                     </span>
+                    {canManage ? <RevokeButton grantId={g.id} /> : null}
                   </li>
                 ))}
                 {live.length === 0 ? (
