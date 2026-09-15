@@ -396,6 +396,19 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
    `mhg-icgenerator`, which uses vitest.
 2. **Backfill codes.** Run the ladder over the current portfolio. M4/M5 cases need human
    adjudication once; persist `marketSource` and the trace on every row.
+
+   **Tooling done 2026-09-15** — `src/issuance.ts` binds the engine to `PrismaRegistry`, and
+   `scripts/issue.ts` drives it: `npm run issue -- propose …` shows a code and the rules that
+   produced it while writing nothing, and `issue`/`rebrand` refuse to run without `--confirm`,
+   because a claim is permanent (G3, M7) and there is no undo. Use `propose` to review the
+   ladder's output on the real portfolio before anything becomes permanent.
+
+   Note the portfolio itself lives in Inspire's database — there are no property seeds in that
+   repo — so how many rows this step actually has is an open question worth answering before
+   building anything more elaborate than the CLI.
+
+2. **Backfill codes.** Run the ladder over the current portfolio. M4/M5 cases need human
+   adjudication once; persist `marketSource` and the trace on every row.
 3. **New Property flow** here, replacing Inspire's free-text code field. `Property.code`
    stays as the column in Inspire; it now only ever receives an issued code.
 4. **Groups + grants schema.** `PropertyGroup`, `PropertyGroupMember`, `grant`. Migrate
