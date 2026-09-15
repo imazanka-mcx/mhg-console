@@ -3,7 +3,8 @@
  *
  *   npm run issue -- propose --name "BYX Collection Evansville East" \
  *                            --city Evansville --state IN --brand BC --submarket East
- *   npm run issue -- issue   --name "…" --city … --state … --brand … --confirm
+ *   npm run issue -- issue   --name "…" --city … --state … --brand … --status pipeline --confirm
+ *   npm run issue -- status  --code EVVBC --to active --confirm
  *   npm run issue -- list
  *   npm run issue -- rebrand --code EVVBC --brand LX --confirm
  *
@@ -14,7 +15,7 @@
  */
 import { prisma } from '../src/db.ts';
 import { issueProperty, proposeCode, rebrandProperty, registryFor } from '../src/issuance.ts';
-import type { IssueRequest, PropertyRecord, TraceStep } from '@mcx/inn-code';
+import type { IssueRequest, PropertyRecord, PropertyStatus, TraceStep } from '@mcx/inn-code';
 
 type Flags = Record<string, string | boolean>;
 
@@ -65,7 +66,20 @@ function requestFrom(flags: Flags): IssueRequest {
   if (franchisor) req.franchisorCode = franchisor;
   const marketOverride = str(flags, 'market-override');
   if (marketOverride) req.marketOverride = marketOverride;
+  const status = statusFrom(flags, 'status');
+  if (status) req.status = status;
   return req;
+}
+
+const STATUSES = ['pipeline', 'active', 'retired'] as const;
+
+function statusFrom(flags: Flags, key: string): PropertyStatus | undefined {
+  const v = str(flags, key);
+  if (v === undefined) return undefined;
+  if (!(STATUSES as readonly string[]).includes(v)) {
+    fail(`--${key} must be one of: ${STATUSES.join(', ')}`);
+  }
+  return v as PropertyStatus;
 }
 
 function fail(message: string): never {
@@ -159,6 +173,31 @@ async function main(): Promise<void> {
       return;
     }
 
+    case 'status': {
+      const code = str(flags, 'code');
+      const to = statusFrom(flags, 'to');
+      if (!code || !to) fail('status needs --code and --to (pipeline | active | retired)');
+      const registry = registryFor();
+      const existing = await registry.get(code);
+      if (!existing) fail(`${code} is not in the registry.`);
+      if (!flags['confirm']) {
+        console.log(`\n  Would move ${code}: ${existing!.status} → ${to}`);
+        console.log('  Rerun with --confirm.');
+        if (to === 'retired') {
+          console.log('\n  Retiring keeps the code claimed forever — it is never reissued (G3).');
+          console.log('  To convert a flag, use `rebrand` instead: it issues the new code first,');
+          console.log('  so the property is never left without one.');
+        }
+        console.log();
+        process.exitCode = 1;
+        return;
+      }
+      await registry.setStatus(code, to);
+      const after = await registry.get(code);
+      console.log(`\n  ✓ ${code}: ${existing!.status} → ${after?.status}\n`);
+      return;
+    }
+
     case 'list': {
       const rows = await registryFor().list();
       if (!rows.length) {
@@ -189,7 +228,14 @@ async function main(): Promise<void> {
     rebrand  --code EVVBC --brand LX --confirm
              Issues a new code, retires the old one, keeps the property id.
 
+    status   --code EVVBC --to active --confirm
+             Moves a code through its lifecycle. G6 issues at LOI as
+             pipeline; it becomes active at opening.
+
     list     Every code ever issued, retired included.
+
+  --status pipeline|active on 'issue' sets the code's initial state.
+  A code is issued at LOI, not at opening (G6), so pipeline is usually right.
 `);
       return;
   }
