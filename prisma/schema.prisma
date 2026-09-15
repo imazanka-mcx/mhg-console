@@ -1,0 +1,147 @@
+// MHG Corporate Console — the registry plane (docs/01 §1).
+//
+// Two tables carry the Inn Code Standard's uniqueness guarantee, and the split
+// between them is the whole point:
+//
+//   property   — one row per hotel, keyed on the immutable internal id the
+//                engine mints. Holds the CURRENT record. A rebrand (G2) updates
+//                this row in place, so downstream systems never repoint (G1).
+//   inn_code   — one row per code EVER ISSUED, keyed on the code itself. Rows
+//                are never deleted, so M5 and G3 fire against history and not
+//                just the live portfolio. A rebrand adds a row; it removes none.
+//
+// Firestore needed four collections for this because it cannot enforce
+// uniqueness on a field — the code and the market code had to become document
+// ids, and the submarket reverse-index had to be its own collection. Postgres
+// enforces on fields, so `submarket_index` collapses into a nullable unique
+// column on market_claim (NULLs do not collide, which is exactly the semantics
+// M6 wants: base market codes bind no submarket).
+//
+// G8: the registry is the source of truth, not the formula. Here that is not a
+// convention — `inn_code.code` is a primary key and `market_claim.submarket_key`
+// is a unique index, so a duplicate is a constraint violation the database
+// refuses, not a check a code path can forget to run.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// Mirrors PropertyStatus in @mcx/inn-code. Retired codes stay claimed forever (G3).
+enum PropertyStatus {
+  pipeline
+  active
+  retired
+}
+
+/// Mirrors MarketSource in @mcx/inn-code — records WHICH rung of the M ladder
+/// produced a code, so M7 ("never reassigned") can be audited later.
+enum MarketSource {
+  override
+  metro
+  airport
+  letters
+  submarket
+  registered
+
+  @@map("market_source")
+}
+
+/// The hotel. `id` is the engine's propertyId: immutable, never the inn code (G1).
+model Property {
+  id String @id
+
+  /// The code this property flies today. Unique across live properties; the
+  /// full historical guarantee lives on InnCode.
+  code String @unique
+
+  name            String
+  brandCode       String         @map("brand_code")
+  brandName       String         @map("brand_name")
+  chainCode       String         @map("chain_code")
+  marketCode      String         @map("market_code")
+  city            String
+  state           String
+  submarket       String         @default("")
+  /// Cross-reference only, never an identifier here (G5).
+  franchisorCode  String         @default("") @map("franchisor_code")
+  status          PropertyStatus
+  /// Set when this property's code replaced another on a rebrand (G2).
+  predecessorCode String         @default("") @map("predecessor_code")
+  /// Date the code was issued, not the opening date. Held as the engine holds
+  /// it — a YYYY-MM-DD string — so a round trip cannot shift it across a zone.
+  effectiveDate   String         @map("effective_date")
+  propCode        String         @map("prop_code")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  codes InnCode[]
+
+  @@index([status])
+  @@index([marketCode])
+  @@map("property")
+}
+
+/// The uniqueness ledger. One row per code ever issued, retired ones included —
+/// this is what G3 checks against and what makes M5 split on history.
+model InnCode {
+  /// The five characters. Primary key: this IS the uniqueness guarantee (G8).
+  code String @id
+
+  propertyId String @map("property_id")
+
+  // A snapshot of the record as issued. Deliberately denormalized: what the
+  // code meant when it was issued must survive later edits to the property,
+  // or a retired code stops explaining itself.
+  name            String
+  brandCode       String         @map("brand_code")
+  brandName       String         @map("brand_name")
+  chainCode       String         @map("chain_code")
+  marketCode      String         @map("market_code")
+  city            String
+  state           String
+  submarket       String         @default("")
+  franchisorCode  String         @default("") @map("franchisor_code")
+  status          PropertyStatus
+  predecessorCode String         @default("") @map("predecessor_code")
+  effectiveDate   String         @map("effective_date")
+  propCode        String         @map("prop_code")
+
+  issuedAt DateTime @default(now()) @map("issued_at")
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId])
+  @@index([marketCode])
+  @@map("inn_code")
+}
+
+/// A market or submarket code and the place it permanently belongs to (M6, M7).
+model MarketClaim {
+  /// Primary key — one claim per market code, forever (M7).
+  marketCode String @id @map("market_code")
+
+  city      String
+  state     String
+  /// Empty for a base market code; set for a submarket split (M5).
+  submarket String @default("")
+  source    MarketSource
+  claimedAt String @map("claimed_at")
+
+  /// "city|ST|submarket", set ONLY when this claim binds a specific submarket
+  /// (M6 — submarket, override and registered sources). Null for a base market
+  /// code, and Postgres treats nulls as distinct in a unique index, so every
+  /// airport- and metro-derived claim coexists while each submarket is owned
+  /// exactly once. This column replaces Firestore's submarketIndex collection.
+  submarketKey String? @unique @map("submarket_key")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("market_claim")
+}

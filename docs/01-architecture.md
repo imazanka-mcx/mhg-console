@@ -360,16 +360,37 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
    for one library with one consumer. In this app's `package.json`:
 
    ```json
-   "@mcx/inn-code": "git+ssh://git@github.com/imazanka-mcx/mhg-icgenerator.git#v1.0.0"
+   "@mcx/inn-code": "git+ssh://git@github.com/imazanka-mcx/mhg-icgenerator.git#v1.1.0"
    ```
 
    The generator has a `prepare` script, so `dist/` builds on install. Bump the tag there
    when the rule ladder changes; bump the ref here to adopt it. **Vercel needs a credential
    to clone a private git dependency** — a deploy key or a PAT in the build environment.
    That is the one setup cost of this route, and a private registry would have needed the
-   same. (`mhg-icgenerator` initialized and tagged `v1.0.0` 2026-09-15.)
-1. **`PrismaRegistry`** here, against the existing engine. Port the Firestore registry's
-   semantics; the 70 tests carry over against the new adapter.
+   same. (`mhg-icgenerator` initialized 2026-09-15; `v1.1.0` adds the claim helpers the port needs — §4 step 1.)
+1. **`PrismaRegistry`** — **done 2026-09-15.** `prisma/schema.prisma`, `src/registry/prisma.ts`,
+   `test/prisma-registry.test.ts`, and a constraint proof in `prisma/verify/`. Four things the
+   implementation forced that this spec had not anticipated:
+
+   - **The Registry port was incomplete.** `conflicts()` and `ownsSubmarket()` decide M7 and M6 and
+     every adapter needs them, but they were internal to the Firestore implementation. Exported in
+     `@mcx/inn-code` v1.1.0, which is why step 0 now pins that tag.
+   - **Firestore's four collections become three tables.** `submarketIndex` existed only because
+     Firestore cannot query on a field; here it is a nullable unique column,
+     `market_claim.submarket_key`. Nulls do not collide in a Postgres unique index, which is
+     exactly M6's rule — a base market code binds no submarket, a split owns its own.
+   - **`inn_code` is the ledger, `property` is the hotel.** A rebrand upserts the property (keeping
+     its id, G1) and *adds* an `inn_code` row; it replaces none. That is what makes G3 and M5 fire
+     against history rather than against the live portfolio.
+   - **The read-then-write checks do not provide the guarantee.** Under concurrency they lose, so
+     every write path also translates Prisma's `P2002` into `ConflictError` — which `issueCode`
+     already retries. `prisma/verify/constraints.sh` proves this against a real server, including
+     two genuinely concurrent writers racing for one code: exactly one wins, and the loser is
+     refused by the primary key.
+
+   Tests use Node's built-in runner (`node --test`) rather than vitest, deliberately: the suite then
+   needs no test dependency at all and runs under Node's type stripping. It is a divergence from
+   `mhg-icgenerator`, which uses vitest.
 2. **Backfill codes.** Run the ladder over the current portfolio. M4/M5 cases need human
    adjudication once; persist `marketSource` and the trace on every row.
 3. **New Property flow** here, replacing Inspire's free-text code field. `Property.code`
