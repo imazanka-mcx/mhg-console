@@ -354,8 +354,20 @@ charts.
 
 Data model before cosmetics, or the redesign is paint on the old nouns.
 
-0. **`@mcx/inn-code` published** to GitHub Packages under `imazanka-mcx`, so this app can
-   depend on it. (Repo initialized 2026-09-11.)
+0. **`@mcx/inn-code` consumable.** Installed as a git dependency pinned to a tag, not
+   published to a registry — GitHub Packages requires the npm scope to match the owning
+   account (`@imazanka-mcx/*`), and renaming the scope or standing up an org is ceremony
+   for one library with one consumer. In this app's `package.json`:
+
+   ```json
+   "@mcx/inn-code": "git+ssh://git@github.com/imazanka-mcx/mhg-icgenerator.git#v1.0.0"
+   ```
+
+   The generator has a `prepare` script, so `dist/` builds on install. Bump the tag there
+   when the rule ladder changes; bump the ref here to adopt it. **Vercel needs a credential
+   to clone a private git dependency** — a deploy key or a PAT in the build environment.
+   That is the one setup cost of this route, and a private registry would have needed the
+   same. (`mhg-icgenerator` initialized and tagged `v1.0.0` 2026-09-15.)
 1. **`PrismaRegistry`** here, against the existing engine. Port the Firestore registry's
    semantics; the 70 tests carry over against the new adapter.
 2. **Backfill codes.** Run the ladder over the current portfolio. M4/M5 cases need human

@@ -40,7 +40,7 @@ them as events; they mirror it and run from their own copy.
 |---|---|
 | `mhotels-inspire` | The PMS. Consumes identity; owns the stay. |
 | `mhg-inspiredrev` | Above-property rates/inventory/yield. Consumes identity; authors rates. |
-| `mhg-icgenerator` | `@mcx/inn-code` — the Inn Code Standard as a library. A dependency of this app. |
+| `mhg-icgenerator` | `@mcx/inn-code` — the Inn Code Standard as a library. Installed here as a git dependency pinned to a tag; see `docs/01 §4` step 0. |
 
 OpsCore is **not** part of this platform — it is a standalone program that
 offers integrations. See `docs/01 §1.6`.
