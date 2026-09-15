@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '../../../db.ts';
-import { grantAccess, requirePermission, revokeGrant } from '../../../auth/access.ts';
+import { grantAccess, revokeGrant } from '../../../auth/access.ts';
+import { requirePermission } from '../../../auth/actor.ts';
 import { generateTempPassword, hashPassword } from '../../../auth/password.ts';
 import { ROLES } from '../../../auth/catalog.ts';
 import { ScopeViolation, SCOPES } from '../../../auth/scope.ts';

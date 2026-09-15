@@ -1,4 +1,4 @@
-import { currentActor } from '../../../auth/access.ts';
+import { currentActor } from '../../../auth/actor.ts';
 import { PasswordForm } from './password-form.tsx';
 
 export const dynamic = 'force-dynamic';

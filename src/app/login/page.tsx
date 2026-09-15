@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-import { currentActor } from '../../auth/access.ts';
+import { currentActor } from '../../auth/actor.ts';
 import { LoginForm } from './login-form.tsx';
 
 export const dynamic = 'force-dynamic';

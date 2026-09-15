@@ -1,5 +1,6 @@
 import { prisma } from '../../../db.ts';
-import { currentActor, permissionsAt } from '../../../auth/access.ts';
+import { permissionsAt } from '../../../auth/access.ts';
+import { currentActor } from '../../../auth/actor.ts';
 import { ROLES } from '../../../auth/catalog.ts';
 import { ProvisionForms } from './provision-forms.tsx';
 import { RevokeButton } from './revoke-button.tsx';

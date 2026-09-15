@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '../../../db.ts';
-import { currentActor } from '../../../auth/access.ts';
+import { currentActor } from '../../../auth/actor.ts';
 import { checkPassword, hashPassword, verifyPassword } from '../../../auth/password.ts';
 
 export type AccountState = { error?: string; ok?: string };

@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
-import { currentActor, permissionsAt } from '../../auth/access.ts';
+import { permissionsAt } from '../../auth/access.ts';
+import { currentActor } from '../../auth/actor.ts';
 import { signOutAction } from '../login/actions.ts';
 
 /**

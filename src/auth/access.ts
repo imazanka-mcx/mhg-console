@@ -1,5 +1,4 @@
 import { prisma } from '../db.ts';
-import { readSession } from './session.ts';
 import { ScopeViolation, covers, firewallViolations, isLive, type Scope } from './scope.ts';
 
 /**
@@ -25,14 +24,9 @@ export interface Actor {
   status: string;
 }
 
-/** The signed-in person, or null. Suspended and offboarded people are not signed in. */
-export async function currentActor(): Promise<Actor | null> {
-  const session = await readSession();
-  if (!session) return null;
-  const person = await prisma.person.findUnique({ where: { id: session.personId } });
-  if (!person || person.status !== 'active') return null;
-  return { id: person.id, email: person.email, name: person.name, status: person.status };
-}
+// Anything that reads the session lives in actor.ts, not here. `next/headers`
+// only resolves inside the Next bundler, so importing it from this module
+// would make every CLI that touches access — sunrise included — unloadable.
 
 /** Every permission key this person holds at `target`, right now. */
 export async function permissionsAt(
@@ -60,17 +54,6 @@ export async function can(
   target: Target = PORTFOLIO,
 ): Promise<boolean> {
   return (await permissionsAt(personId, target)).has(permission);
-}
-
-/** Throws unless the signed-in person holds `permission`. Use at the top of any action.
- *  Named in full rather than `require` — that word already means something in Node. */
-export async function requirePermission(permission: string, target: Target = PORTFOLIO): Promise<Actor> {
-  const actor = await currentActor();
-  if (!actor) throw new Error('Not signed in.');
-  if (!(await can(actor.id, permission, target))) {
-    throw new Error(`Not permitted: ${permission}`);
-  }
-  return actor;
 }
 
 export interface GrantInput {
