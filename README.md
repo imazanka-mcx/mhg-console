@@ -25,6 +25,19 @@ access model, and the migration order.
 Phase 0 — architecture settled, nothing built. Next: `PrismaRegistry` against
 `@mcx/inn-code` (`docs/01 §4` step 1).
 
+## Running it
+
+Node 22.6 or newer — everything here runs TypeScript directly through Node's
+type stripping, with no build step and no test dependency. `.nvmrc` pins it:
+
+```bash
+nvm use            # Node 22
+npm install
+npm test           # 15 tests, node:test
+npm run typecheck
+npm run issue      # the inn code CLI — see docs/01 §4
+```
+
 ## Stack
 
 Next.js + Prisma + its own Neon Postgres, on its own Vercel project — the same
