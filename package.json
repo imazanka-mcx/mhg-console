@@ -5,32 +5,34 @@
   "license": "UNLICENSED",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22.6"
-  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "test": "node --test --experimental-strip-types \"test/**/*.test.ts\"",
     "test:watch": "node --test --watch --experimental-strip-types \"test/**/*.test.ts\"",
-    "issue": "node --env-file-if-exists=.env --experimental-strip-types scripts/issue.ts",
+    "issue": "node --experimental-strip-types scripts/issue.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "verify:constraints": "./prisma/verify/constraints.sh"
+    "verify:constraints": "./prisma/verify/constraints.sh",
+    "db:seed": "node --env-file-if-exists=.env --experimental-strip-types prisma/seed.ts",
+    "sunrise": "node --env-file-if-exists=.env --experimental-strip-types scripts/sunrise.ts"
   },
   "dependencies": {
     "@mcx/inn-code": "git+ssh://git@github.com/imazanka-mcx/mhg-icgenerator.git#v1.1.0",
     "@prisma/client": "^6.1.0",
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.6.3",
     "next": "14.2.5",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

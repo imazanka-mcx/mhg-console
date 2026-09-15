@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
-import { issueProperty, proposeCode } from '../../../issuance.ts';
+import { issueProperty, proposeCode } from '../../../../issuance.ts';
 import type { IssueRequest, TraceStep } from '@mcx/inn-code';
 
 /**

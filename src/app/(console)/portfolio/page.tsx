@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { registryFor } from '../../issuance.ts';
+import { registryFor } from '../../../issuance.ts';
 
 export const dynamic = 'force-dynamic';
 

@@ -145,3 +145,147 @@ model MarketClaim {
 
   @@map("market_claim")
 }
+
+// ───────────────────────────── Identity and access ─────────────────────────
+// docs/01 §2. The whole model is three tables plus a catalog, and the shape is
+// the argument: a PERSON is one row for life, a ROLE is a template, and a GRANT
+// says where and when. Separating them is what makes "one login, many
+// properties" and "a region is not a schema change" both fall out for free.
+
+/// Where a grant applies. Polymorphic from day one even though only `portfolio`
+/// has anything to point at yet — adding an above-property axis later must be a
+/// row, never a migration (§2.2). `group` is reserved for PropertyGroup.
+enum Scope {
+  portfolio
+  group
+  property
+}
+
+enum PersonStatus {
+  invited /// created, has not set a password yet
+  active
+  suspended /// grants frozen, row intact
+  offboarded /// all grants closed, row retained for audit
+}
+
+/// One row per human, org-wide, for life. A person who moves between properties
+/// is the same row with different grants — never a second account.
+model Person {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  /// Null until the invitation is accepted and a password is set.
+  passwordHash String?      @map("password_hash")
+  status       PersonStatus @default(invited)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  grants       Grant[]      @relation("GrantHolder")
+  grantsIssued Grant[]      @relation("GrantedBy")
+  auditEvents  AuditEvent[]
+
+  @@index([status])
+  @@map("person")
+}
+
+/// A named template from a closed catalog. Lives in DATA, not a Postgres enum,
+/// so adding a role is a row rather than a migration (§2.4).
+model Role {
+  key         String @id
+  name        String
+  description String
+
+  /// Bumped when the permission set changes. Grants record the version they
+  /// were issued against, so the audit trail cannot be rewritten by an edit.
+  version Int @default(1)
+
+  /// The scopes this role may be granted at. A role assignable only at
+  /// `property` cannot be handed out portfolio-wide.
+  assignableAt Scope[] @map("assignable_at")
+
+  permissions RolePermission[]
+  grants      Grant[]
+
+  @@map("role")
+}
+
+/// An atomic capability. `scopeMax` is the direct-bill firewall expressed as a
+/// constraint rather than a discipline (§2.3): a permission capped at
+/// `property` can never be attached to a role granted above one property, so
+/// nobody holds A/R authority across the portfolio by accident.
+model Permission {
+  key      String @id
+  name     String
+  /// The widest scope this permission may ever be granted at.
+  scopeMax Scope  @map("scope_max")
+  /// Which system enforces it. The console owns the catalog; Inspire and
+  /// InspiredREV consume it (§2.3, §4 step 5).
+  ownedBy  String @default("console") @map("owned_by")
+
+  roles RolePermission[]
+
+  @@map("permission")
+}
+
+model RolePermission {
+  roleKey       String @map("role_key")
+  permissionKey String @map("permission_key")
+
+  role       Role       @relation(fields: [roleKey], references: [key], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@id([roleKey, permissionKey])
+  @@map("role_permission")
+}
+
+/// Who can do what, where, and WHEN. Temporal by construction: nothing is ever
+/// deleted, so "who had access on 3 March" is a query rather than an
+/// investigation, and a transfer is one closed grant plus one opened (§2.5).
+model Grant {
+  id       String @id @default(cuid())
+  personId String @map("person_id")
+
+  scope Scope
+  /// Null for `portfolio`. A group id or an inn code for the narrower scopes.
+  scopeRef String? @map("scope_ref")
+
+  roleKey String @map("role_key")
+  /// The role version in force when this was issued.
+  roleVersion Int @map("role_version")
+
+  effectiveFrom DateTime  @default(now()) @map("effective_from")
+  /// Null while live. Set to close a grant — the row stays.
+  effectiveTo   DateTime? @map("effective_to")
+
+  /// Null only for the sunrise grant, which no person issued.
+  grantedById String? @map("granted_by_id")
+  reason      String
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  person    Person  @relation("GrantHolder", fields: [personId], references: [id])
+  grantedBy Person? @relation("GrantedBy", fields: [grantedById], references: [id])
+  role      Role    @relation(fields: [roleKey], references: [key])
+
+  @@index([personId, effectiveTo])
+  @@index([scope, scopeRef])
+  @@map("grant")
+}
+
+/// Append-only. Same shape as Inspire's and InspiredREV's audit_log: actor,
+/// what happened, before/after. Every issuance, grant and revocation lands here.
+model AuditEvent {
+  id       String  @id @default(cuid())
+  actorId  String? @map("actor_id")
+  action   String
+  subject  String
+  detail   Json    @default("{}")
+  at       DateTime @default(now())
+
+  actor Person? @relation(fields: [actorId], references: [id])
+
+  @@index([at])
+  @@index([subject])
+  @@map("audit_event")
+}
