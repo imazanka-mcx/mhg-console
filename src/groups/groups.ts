@@ -82,7 +82,10 @@ export async function createGroup(input: CreateGroupInput) {
       name,
       description: input.description?.trim() ?? '',
       membershipMode: rule ? 'rule' : 'manual',
-      ruleJson: rule ?? undefined,
+      // Spread rather than `ruleJson: rule ?? undefined`: `exactOptionalPropertyTypes`
+      // draws a distinction between "absent" and "explicitly undefined", and
+      // Prisma's Json input accepts the first and not the second.
+      ...(rule ? { ruleJson: rule } : {}),
     },
   });
 

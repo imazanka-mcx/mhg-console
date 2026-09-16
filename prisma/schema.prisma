@@ -24,6 +24,11 @@
 
 generator client {
   provider = "prisma-client-js"
+  // `native` is whatever machine ran `prisma generate` — a Mac here. Vercel's
+  // Node 22 runtime is Amazon Linux 2023, which needs the rhel-openssl-3.0.x
+  // engine; without it the deployed app throws at the first query rather than
+  // at build, which is the worst place to find out.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

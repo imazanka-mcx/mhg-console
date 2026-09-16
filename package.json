@@ -4,6 +4,9 @@
   "description": "MHG Corporate Console \u2014 the registry plane for properties, groups, people and the Inn Code Standard.",
   "license": "UNLICENSED",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "type": "module",
   "scripts": {
     "dev": "next dev",

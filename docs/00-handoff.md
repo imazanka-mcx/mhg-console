@@ -146,9 +146,23 @@ Built and **verified end to end against the live Neon database**:
    forces it until the first rebrand of a hotel somebody holds a property grant
    on.
 
-**No Vercel project yet** — deliberately. Deploy when there is a reason to;
-that is also when the private-dependency credential and `AUTH_SECRET` as an
-environment variable are needed.
+**Deployment: prepared, not yet provisioned.** `DEPLOY.md` is the runbook and
+the repo side is done — `vercel.json`, `scripts/vercel-install.sh`,
+`scripts/vercel-build.sh`, `engines.node`, and the `rhel-openssl-3.0.x` engine
+target. What is left is account work: the Neon `dev` branch, the read-only PAT
+for `@mcx/inn-code`, the Vercel project and its per-environment variables, and
+the CNAME for **mhgconsole.mazcoenterprises.com**.
+
+Two shapes there worth knowing before touching them:
+
+- **Neon splits into `main` (production) and `dev` (local).** The database every
+  migration and `npm run sunrise` has run against so far becomes production and
+  already holds the owner account — there is no sunrise step on first deploy.
+  Local `.env` moves to the dev branch, because a code claim is permanent (G3,
+  M7) and `npm run issue` typed at a laptop has no staging mode.
+- **`migrate deploy` runs only when `VERCEL_ENV=production`.** Otherwise opening
+  a pull request could migrate the production registry. Previews point at the
+  dev branch.
 
 ---
 

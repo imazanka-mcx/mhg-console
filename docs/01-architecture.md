@@ -423,9 +423,12 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
 
    The generator has a `prepare` script, so `dist/` builds on install. Bump the tag there
    when the rule ladder changes; bump the ref here to adopt it. **Vercel needs a credential
-   to clone a private git dependency** — a deploy key or a PAT in the build environment.
-   That is the one setup cost of this route, and a private registry would have needed the
-   same. (`mhg-icgenerator` initialized 2026-09-15; `v1.1.0` adds the claim helpers the port needs — §4 step 1.)
+   to clone a private git dependency** — that is the one setup cost of this route, and a
+   private registry would have needed the same. Settled 2026-09-16: a fine-grained,
+   read-only PAT scoped to `mhg-icgenerator`, held in the build environment as
+   `INN_CODE_TOKEN`, with `scripts/vercel-install.sh` rewriting the ssh:// URL to HTTPS for
+   the length of the build. The credential stays out of `package.json`, so rotating it is
+   not a commit. `DEPLOY.md §3`. (`mhg-icgenerator` initialized 2026-09-15; `v1.1.0` adds the claim helpers the port needs — §4 step 1.)
 1. **`PrismaRegistry`** — **done 2026-09-15.** `prisma/schema.prisma`, `src/registry/prisma.ts`,
    `test/prisma-registry.test.ts`, and a constraint proof in `prisma/verify/`. Four things the
    implementation forced that this spec had not anticipated:
