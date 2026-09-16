@@ -36,6 +36,8 @@ npm install
 npm test           # 15 tests, node:test
 npm run typecheck
 npm run issue      # the inn code CLI — see docs/01 §4
+npm run groups     # the group CLI — see docs/01 §2.2
+npm run verify:groups   # read-only audit of group-backed access
 ```
 
 ## Stack

@@ -66,12 +66,41 @@ export class ScopeViolation extends Error {
   }
 }
 
-/** Does a grant at `grantScope` cover `target`? */
+const NO_GROUPS: ReadonlySet<string> = new Set();
+
+/**
+ * Does a grant cover `target`?
+ *
+ * `targetGroups` is the set of group ids the TARGET PROPERTY belongs to — the
+ * one thing this function cannot work out for itself, and the only reason a
+ * group grant can reach a property at all. It is passed in rather than looked
+ * up so that the rule stays decidable without a database, which is what lets
+ * every case below be a unit test rather than a fixture.
+ *
+ * Groups do not nest. A property is in many groups, flat; a group grant covers
+ * the properties in that group and nothing else. Nesting would reintroduce the
+ * single-parent hierarchy §2.2 exists to avoid, and would make "how wide is
+ * this grant" a graph walk instead of a lookup.
+ */
 export function covers(
   grant: { scope: Scope; scopeRef: string | null },
   target: { scope: Scope; scopeRef: string | null },
+  targetGroups: ReadonlySet<string> = NO_GROUPS,
 ): boolean {
   if (grant.scope === 'portfolio') return true;
+
+  if (grant.scope === 'group') {
+    if (grant.scopeRef === null) return false;
+    // The group itself.
+    if (target.scope === 'group') return grant.scopeRef === target.scopeRef;
+    // A property inside it. This is the whole point of §2.2: the grant was
+    // never rewritten when the region was redrawn — membership moved instead.
+    if (target.scope === 'property') return targetGroups.has(grant.scopeRef);
+    return false;
+  }
+
+  // A property grant reaches exactly one property, and never a group: a group
+  // is a set, and holding one member of a set is not holding the set.
   if (grant.scope !== target.scope) return false;
   return grant.scopeRef === target.scopeRef;
 }

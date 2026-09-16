@@ -1,4 +1,5 @@
 import { prisma } from '../db.ts';
+import { groupIdsForProperty, resolveProperty } from '../groups/groups.ts';
 import { ScopeViolation, covers, firewallViolations, isLive, type Scope } from './scope.ts';
 
 /**
@@ -28,7 +29,16 @@ export interface Actor {
 // only resolves inside the Next bundler, so importing it from this module
 // would make every CLI that touches access — sunrise included — unloadable.
 
-/** Every permission key this person holds at `target`, right now. */
+const NO_GROUPS: ReadonlySet<string> = new Set();
+
+/**
+ * Every permission key this person holds at `target`, right now.
+ *
+ * A group grant reaches a property through membership (docs/01 §2.2), so a
+ * property target needs to know which groups that property is in. That lookup
+ * is skipped unless it can change the answer — nobody holding only portfolio
+ * and property grants pays for it — which keeps the common path one query.
+ */
 export async function permissionsAt(
   personId: string,
   target: Target = PORTFOLIO,
@@ -39,13 +49,23 @@ export async function permissionsAt(
   });
 
   const now = new Date();
+  const live = grants.filter((g) => isLive(g, now));
+
+  const needsGroups =
+    target.scope === 'property' && !!target.scopeRef && live.some((g) => g.scope === 'group');
+  const targetGroups = needsGroups ? await groupIdsForProperty(target.scopeRef!) : NO_GROUPS;
+
   const keys = new Set<string>();
-  for (const g of grants) {
-    if (!isLive(g, now)) continue;
-    if (!covers({ scope: g.scope as Scope, scopeRef: g.scopeRef }, target)) continue;
+  for (const g of live) {
+    if (!covers({ scope: g.scope as Scope, scopeRef: g.scopeRef }, target, targetGroups)) continue;
     for (const rp of g.role.permissions) keys.add(rp.permissionKey);
   }
   return keys;
+}
+
+/** Convenience for the common downstream question: what can they do at this hotel? */
+export function permissionsAtProperty(personId: string, ref: string): Promise<Set<string>> {
+  return permissionsAt(personId, { scope: 'property', scopeRef: ref });
 }
 
 export async function can(
@@ -98,9 +118,26 @@ export async function grantAccess(input: GrantInput) {
   );
   if (violations.length) throw new ScopeViolation(input.scope, violations);
 
-  const scopeRef = input.scope === 'portfolio' ? null : (input.scopeRef ?? null);
+  let scopeRef = input.scope === 'portfolio' ? null : (input.scopeRef?.trim() || null);
   if (input.scope !== 'portfolio' && !scopeRef) {
     throw new Error(`A ${input.scope} grant needs something to point at.`);
+  }
+
+  // A grant whose ref points at nothing is worse than a refused one: it looks
+  // like access on the People page and confers none. Both narrow scopes are
+  // therefore resolved before the row is written, and the property ref is
+  // normalized to the canonical code so coverage is a string match later.
+  if (input.scope === 'group' && scopeRef) {
+    const group = await prisma.propertyGroup.findUnique({ where: { id: scopeRef } });
+    if (!group) throw new Error(`No such group: ${scopeRef}`);
+    if (group.archivedAt) {
+      throw new Error(`${group.name} is archived. Restore it before granting access on it.`);
+    }
+  }
+  if (input.scope === 'property' && scopeRef) {
+    const property = await resolveProperty(scopeRef);
+    if (!property) throw new Error(`No property with code or id "${scopeRef}".`);
+    scopeRef = property.code;
   }
 
   const grant = await prisma.grant.create({

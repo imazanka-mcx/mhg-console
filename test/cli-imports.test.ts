@@ -16,7 +16,13 @@ import { dirname, resolve } from 'node:path';
  * are not something a test should execute.
  */
 
-const ENTRYPOINTS = ['scripts/sunrise.ts', 'scripts/issue.ts', 'prisma/seed.ts'];
+const ENTRYPOINTS = [
+  'scripts/sunrise.ts',
+  'scripts/issue.ts',
+  'scripts/groups.ts',
+  'scripts/verify-groups.ts',
+  'prisma/seed.ts',
+];
 
 /** Bare specifiers a plain-Node entrypoint may not reach, at any depth. */
 const BUNDLER_ONLY = [/^next\//, /^next$/, /^react-dom\//, /^server-only$/];

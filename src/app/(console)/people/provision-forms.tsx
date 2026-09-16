@@ -12,6 +12,13 @@ interface RoleOption {
   assignableAt: readonly string[];
 }
 
+export interface GroupOption {
+  id: string;
+  name: string;
+  kind: string;
+  members: number;
+}
+
 const INPUT =
   'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500';
 const LABEL = 'mb-1 block text-xs font-medium text-slate-500';
@@ -29,7 +36,13 @@ function Submit() {
   );
 }
 
-export function ProvisionForms({ roles }: { roles: RoleOption[] }) {
+export function ProvisionForms({
+  roles,
+  groups,
+}: {
+  roles: RoleOption[];
+  groups: GroupOption[];
+}) {
   const [state, action] = useFormState<ProvisionState, FormData>(inviteAction, {});
   const [roleKey, setRoleKey] = useState(roles[0]?.key ?? '');
 
@@ -105,18 +118,50 @@ export function ProvisionForms({ roles }: { roles: RoleOption[] }) {
         </div>
       </div>
 
-      {effectiveScope !== 'portfolio' ? (
+      {effectiveScope === 'property' ? (
         <div className="mt-4">
           <label className={LABEL} htmlFor="scopeRef">
-            {effectiveScope === 'property' ? 'Inn code' : 'Group'}
+            Inn code
           </label>
           <input
             id="scopeRef"
             name="scopeRef"
             maxLength={64}
-            placeholder={effectiveScope === 'property' ? 'EVVBC' : 'grp_midwest'}
+            placeholder="EVVBC"
             className={`${INPUT} font-mono`}
           />
+          <p className="mt-1 text-xs text-slate-400">
+            Checked against the registry — a grant pointing at nothing looks like access and confers
+            none.
+          </p>
+        </div>
+      ) : null}
+
+      {effectiveScope === 'group' ? (
+        <div className="mt-4">
+          <label className={LABEL} htmlFor="scopeRef">
+            Group
+          </label>
+          {groups.length === 0 ? (
+            <p className="rounded border border-warning-200 bg-warning-50 p-3 text-xs text-warning-800">
+              There are no groups yet, so there is nothing to grant at group scope. Draw one under
+              Groups first — a region is a set of properties, not a tier.
+            </p>
+          ) : (
+            <>
+              <select id="scopeRef" name="scopeRef" className={INPUT} defaultValue={groups[0]?.id}>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} — {g.kind}, {g.members} propert{g.members === 1 ? 'y' : 'ies'}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-400">
+                Covers whatever is in the group today, and whatever is in it tomorrow. Redrawing the
+                group does not touch this grant — that is the point.
+              </p>
+            </>
+          )}
         </div>
       ) : null}
 

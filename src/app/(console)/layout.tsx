@@ -17,7 +17,7 @@ import { signOutAction } from '../login/actions.ts';
 
 const SECTIONS = [
   { href: '/portfolio', label: 'Portfolio', needs: 'property.read' },
-  { href: '/groups', label: 'Groups', needs: null },
+  { href: '/groups', label: 'Groups', needs: 'group.read' },
   { href: '/people', label: 'People', needs: 'people.read' },
   { href: '/oversight', label: 'Oversight', needs: null },
   { href: '/standards', label: 'Standards', needs: null },

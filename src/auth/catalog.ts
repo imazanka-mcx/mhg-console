@@ -39,6 +39,16 @@ export const PERMISSIONS: PermissionSeed[] = [
   { key: 'people.read', name: 'View people and their access', scopeMax: 'portfolio', ownedBy: 'console' },
   { key: 'people.manage', name: 'Invite people and grant access', scopeMax: 'portfolio', ownedBy: 'console' },
 
+  // ── groups ──────────────────────────────────────────────────────────────
+  // Group membership decides who a group grant reaches, so editing it is an
+  // access action even though it touches no grant (§2.2). Split from
+  // people.manage on purpose: drawing regions and provisioning people are
+  // different jobs, and a registrar should be able to do the first without the
+  // second. Both are portfolio-capped — there is no such thing as managing
+  // groups from inside one group.
+  { key: 'group.read', name: 'View groups and their membership', scopeMax: 'portfolio', ownedBy: 'console' },
+  { key: 'group.manage', name: 'Create groups and edit membership', scopeMax: 'portfolio', ownedBy: 'console' },
+
   // ── standards ───────────────────────────────────────────────────────────
   { key: 'standards.manage', name: 'Edit the brand table and market claims', scopeMax: 'portfolio', ownedBy: 'console' },
 
@@ -66,6 +76,8 @@ export const ROLES: RoleSeed[] = [
       'property.issue',
       'property.rebrand',
       'property.status',
+      'group.read',
+      'group.manage',
       'people.read',
       'people.manage',
       'standards.manage',
@@ -75,7 +87,7 @@ export const ROLES: RoleSeed[] = [
     key: 'registrar',
     name: 'Registrar',
     description:
-      'Issues codes and maintains the standard. Cannot change who has access — provisioning is a separate authority on purpose.',
+      'Issues codes, maintains the standard, and draws the groups the portfolio is sliced by. Cannot change who has access — provisioning is a separate authority on purpose.',
     version: 1,
     assignableAt: ['portfolio'],
     permissions: [
@@ -83,6 +95,8 @@ export const ROLES: RoleSeed[] = [
       'property.issue',
       'property.rebrand',
       'property.status',
+      'group.read',
+      'group.manage',
       'standards.manage',
     ],
   },
@@ -93,7 +107,7 @@ export const ROLES: RoleSeed[] = [
       'Reads the portfolio. Grantable narrowly, which is what makes a regional or single-property seat possible without inventing a role per tier.',
     version: 1,
     assignableAt: ['portfolio', 'group', 'property'],
-    permissions: ['property.read'],
+    permissions: ['property.read', 'group.read'],
   },
 ];
 

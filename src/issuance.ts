@@ -2,6 +2,7 @@ import { MHG_CONFIG, deriveCode, issueCode, rebrand } from '@mcx/inn-code';
 import type { DeriveResult, EngineDeps, IssueRequest, IssueResult } from '@mcx/inn-code';
 
 import { prisma } from './db.ts';
+import { materializeAll } from './groups/groups.ts';
 import { PrismaRegistry, type PrismaLike } from './registry/prisma.ts';
 
 /**
@@ -43,12 +44,31 @@ export function proposeCode(
   return deriveCode(engineFor(client), req);
 }
 
+/**
+ * Re-materialize the rule groups after the portfolio changes.
+ *
+ * A new Hampton has to land in the Hampton group without anybody remembering to
+ * press a button — that is what "brand grants behave exactly as they do now"
+ * means (§2.2). Never allowed to fail an issuance: the code is claimed and the
+ * registry is correct whether or not the groups caught up, and a group that did
+ * not catch up shows as a stale `syncedAt` in Oversight.
+ */
+async function syncGroupsQuietly(): Promise<void> {
+  try {
+    await materializeAll(null);
+  } catch {
+    /* the registry write already succeeded; staleness is the visible signal */
+  }
+}
+
 /** Issue a code for real. The atomic claim inside is the uniqueness guarantee (G8). */
-export function issueProperty(
+export async function issueProperty(
   req: IssueRequest,
   client: typeof prisma = prisma,
 ): Promise<IssueResult> {
-  return issueCode(engineFor(client), req);
+  const result = await issueCode(engineFor(client), req);
+  await syncGroupsQuietly();
+  return result;
 }
 
 /**
@@ -56,11 +76,15 @@ export function issueProperty(
  * retires the old one. The property keeps its internal id, so nothing
  * downstream is repointed (G1).
  */
-export function rebrandProperty(
+export async function rebrandProperty(
   oldCode: string,
   newBrandCode: string,
   overrides: Partial<IssueRequest> = {},
   client: typeof prisma = prisma,
 ): Promise<IssueResult> {
-  return rebrand(engineFor(client), oldCode, newBrandCode, overrides);
+  const result = await rebrand(engineFor(client), oldCode, newBrandCode, overrides);
+  // The brand changed, so brand-group membership did too — and the property
+  // keeps its id, so its manual groups are untouched without doing anything.
+  await syncGroupsQuietly();
+  return result;
 }

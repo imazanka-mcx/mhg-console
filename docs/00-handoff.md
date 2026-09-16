@@ -63,7 +63,7 @@ stripping, no build step and no test dependency. `.nvmrc` pins it.
 ```bash
 nvm use
 npm install
-npm test                 # node:test, currently 39
+npm test                 # node:test, currently 69
 npm run typecheck
 npm run dev
 ```
@@ -81,10 +81,21 @@ npm run db:seed                                   # role + permission catalog
 npm run sunrise -- --email you@… --name "Your Name" --confirm
 ```
 
-Other commands: `npm run issue` (the inn code CLI — `propose`, `issue`,
-`rebrand`, `status`, `list`), `npm run verify:constraints` (proves the
-uniqueness guarantees against a real Postgres; **refuses** any target that is
-not a local `*_test`/`*_dev` database, because it drops every registry table).
+Other commands:
+
+- `npm run issue` — the inn code CLI (`propose`, `issue`, `rebrand`, `status`,
+  `list`). Writes need `--confirm`.
+- `npm run groups` — the group CLI (`list`, `show`, `new`, `add`, `remove`,
+  `sync`). Writes need `--confirm`; `show` prints who a membership change
+  would affect before it changes.
+- `npm run verify:groups` — **read-only.** Audits group-backed access against
+  the live registry: capped permissions held above property, grants pointing at
+  a group or code that does not exist, rule groups that have drifted, and group
+  grants that reach nothing. Safe to run any time; this is the Oversight
+  exception list in script form.
+- `npm run verify:constraints` — proves the uniqueness guarantees against a
+  real Postgres. **Refuses** any target that is not a local `*_test`/`*_dev`
+  database, because it drops every registry table.
 
 ---
 
@@ -103,19 +114,37 @@ Built and **verified end to end against the live Neon database**:
   `audit_event`. `npm run sunrise` creates the first account and refuses once
   any person exists; that account holds `owner` at portfolio scope and
   provisions everyone else, including other owners.
+- **Groups** (`docs/01 §2.2`). `property_group` / `property_group_member`,
+  manual and rule-backed, materialized either way. The `group` scope now has
+  something to point at: a group grant reaches every property in the group, and
+  redrawing the group touches no grant. Sections: `/groups` with rule preview,
+  `/groups/[id]` with membership editing and a "who this group grants" panel.
+  The People form picks a real group instead of accepting typed text, and
+  `grantAccess` refuses a `scope_ref` that resolves to nothing.
+
+  **Authored on Linux, so two steps must run on the Mac before this is live:**
+  the migration in `prisma/migrations/*_groups` is hand-written (the schema
+  engine cannot run in the Cowork VM) and the client has not been regenerated.
+  Run `npx prisma migrate dev && npm run db:seed && npm run typecheck`. Until
+  `prisma generate` runs, `typecheck` reports ~32 errors, all of them the
+  missing `propertyGroup` / `propertyGroupMember` delegates or a cascade from
+  them; `npm test` is unaffected and passes, because every test here is
+  database-free by design.
 
 **Open, in priority order:**
 
-1. **`PropertyGroup` / `PropertyGroupMember`** (`docs/01 §2.2`). The `group`
-   scope already exists and resolves — nothing can be granted at it because no
-   groups exist. This is the piece that makes the regional problem tractable.
-2. **Inspire's role migration** (`§4 step 5`). Its `Role` enum, `RANK` and
+1. **Inspire's role migration** (`§4 step 5`). Its `Role` enum, `RANK` and
    `MODULE_ACCESS` become rows here; its `UserPropertyRole` rows become grants
    at property scope. Payoff: the A/R permissions are *already* seeded capped,
    so the `corporate_admin`-has-A/R-at-every-property hole closes the moment
-   Inspire reads from here.
-3. **Invert the directory sync** (`§6`). Highest risk; shadow it first.
-4. **Strip the PMS screens** from Inspire's `/corporate`.
+   Inspire reads from here — and with groups built, a Regional DOO now has a
+   scope to be granted at, which was the other half of that problem (§2.6).
+2. **Invert the directory sync** (`§6`). Highest risk; shadow it first.
+3. **Strip the PMS screens** from Inspire's `/corporate`.
+4. **Decide what `grant.scope_ref` holds at property scope** — the inn code
+   (today) or the internal id. `docs/01 §5` states the three options. Nothing
+   forces it until the first rebrand of a hotel somebody holds a property grant
+   on.
 
 **No Vercel project yet** — deliberately. Deploy when there is a reason to;
 that is also when the private-dependency credential and `AUTH_SECRET` as an
@@ -139,6 +168,18 @@ Each of these was argued once. The reasoning matters more than the conclusion.
   caps `ar.view`, `ar.manage`, `folio.post` at `property`; `grantAccess`
   refuses any role carrying them at wider scope. A one-property group still
   counts as above property — cardinality is not the test, being a set is.
+- **Regions are membership, and membership is keyed on the property id.** Keyed
+  on the inn code, a rebrand would silently drop a hotel out of its region;
+  keyed on the id, group coverage survives a code change for free (G1, G2).
+  Resolution reads the current code through the membership row.
+- **Rule groups materialize into rows, never evaluate on read.** A live
+  predicate is not inspectable, and access resolution would have two shapes
+  depending on how a property got in. The cost is drift, which is why
+  `synced_at` exists, issuance re-materializes, and `verify:groups` checks it.
+- **Archiving a group does not stop it resolving.** Access is closed by closing
+  a grant. Otherwise a display action would silently revoke people.
+- **Groups do not nest.** A property is in many groups, flat. Nesting brings
+  back the single-parent hierarchy §2.2 exists to avoid.
 - **Codes are derived, never typed**, and claiming is separate from proposing,
   because a claim is permanent (G3, M7) and there is no undo.
 - **`inn_code` is a ledger.** A rebrand *adds* a row and retires the old one;
@@ -170,6 +211,12 @@ These have each bitten at least once.
   Declare fields explicitly.
 - **`.env` cannot be written by remote tooling** (policy). It must be edited on
   the Mac.
+- **Prisma cannot run at all in the Cowork VM.** `prisma migrate` / `generate`
+  try to fetch `linux-arm64` engines and get a 403 through the proxy — and
+  letting them succeed would be worse, since generating for a Linux target
+  would replace the `darwin-arm64` client the Mac needs. Author the migration
+  SQL by hand there and apply it on the Mac; `npm test` still runs in the VM
+  because nothing under `test/` touches a database.
 - In the Cowork VM, git cannot delete its own lock files without folder delete
   permission; a stale `.git/*.lock` surfaces as "Another git process seems to be
   running" when none is.
@@ -186,4 +233,7 @@ These have each bitten at least once.
   implementation forced that the spec had not anticipated.
 - **Verification is stated honestly** — what ran, what did not, and why. A
   claim like "the constraints hold under concurrency" should be backed by
-  something that actually ran two writers at once.
+  something that actually ran two writers at once. Where a check would
+  otherwise need throwaway grants, prefer a read-only audit of real rows
+  (`npm run verify:groups`) over polluting an audit trail that is supposed to
+  mean something.

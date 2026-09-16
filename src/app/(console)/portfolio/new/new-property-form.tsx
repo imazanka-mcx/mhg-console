@@ -14,7 +14,7 @@ const LABEL = 'mb-1 block text-xs font-medium text-slate-500';
 const INPUT =
   'w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500';
 
-function Submit({ children, variant }: { children: string; variant: 'primary' | 'quiet' }) {
+function Submit({ children, variant }: { children: React.ReactNode; variant: 'primary' | 'quiet' }) {
   const { pending } = useFormStatus();
   const base = 'rounded px-4 py-2 text-sm font-medium disabled:opacity-50';
   const style =

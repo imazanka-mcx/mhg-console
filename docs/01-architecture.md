@@ -239,6 +239,64 @@ regional coverage without the permission engine ever needing to know what a regi
 Groups are registry-owned, so they publish on the same shell stream and consumers mirror
 them.
 
+#### What building it settled (2026-09-15)
+
+Nine things the spec above had not decided, listed with the reasoning rather than just the
+conclusion, because the conclusions are cheap and the reasoning is what stops them being
+undone.
+
+- **Membership is keyed on the property's immutable id, and resolution reads the current
+  code through it.** The spec wrote `PropertyGroupMember { groupId, propertyId }` without
+  saying which property key that was, and the choice is load-bearing: keyed on the inn
+  code, a rebrand would silently drop a hotel out of its region. Keyed on the id, group
+  coverage survives a code change for free — the same reason downstream systems hold the
+  id and never the code (G1, G2).
+
+- **`covers()` takes the target's group set as an argument.** Deciding whether a group
+  grant reaches a property needs one fact that scope arithmetic cannot derive: which
+  groups that property is in. Passing it in keeps `auth/scope.ts` free of Prisma, so every
+  coverage case stays a unit test rather than a fixture. `permissionsAt` does the lookup,
+  and skips it entirely unless the target is a property *and* the person actually holds a
+  group grant — so the common path is still one query.
+
+- **Grants and membership speak different property vocabularies, and that seam is now
+  explicit.** A grant at property scope holds an inn *code*; membership holds the internal
+  *id*. `resolveProperty` accepts either and `grantAccess` normalizes what it stores. See
+  §5 — whether property grants should move to ids is now an open decision rather than an
+  accident.
+
+- **Rule groups materialize into rows; they are not evaluated on read.** A live predicate
+  is not inspectable — "who is in Midwest" would have no answer that survives being asked
+  twice, and access resolution would have two shapes depending on how a property got in.
+  The cost is that rows can go stale, so `synced_at` exists to make that visible, issuing
+  or rebranding a code re-materializes every rule group, and drift is an Oversight
+  exception (§3.1) with a check of its own in `npm run verify:groups`.
+
+- **A rule with no conditions is refused.** It matches the whole portfolio, which is
+  portfolio scope wearing a group's name — and it would arrive silently, as a group that
+  mysteriously contains everything.
+
+- **A rule that does not mention status excludes retired codes.** One implicit condition,
+  stated in the UI and in `describeRule`, because a region that quietly accumulates dead
+  hotels stops being a list of places anyone operates. `status: ['retired']` means it.
+
+- **Archiving a group does not stop it resolving.** Access is closed by closing a grant.
+  A group that stopped covering its members when archived would revoke people through what
+  looks like a display action.
+
+- **Groups do not nest.** A property is in many groups, flat. Nesting would reintroduce the
+  single-parent hierarchy this section exists to avoid, and would turn "how wide is this
+  grant" from a lookup into a graph walk.
+
+- **`group.read` / `group.manage` are their own permissions, split from `people.manage`.**
+  Editing membership *is* an access change — it widens everyone holding a grant on that
+  group, without touching a grant — but drawing regions and provisioning people are
+  different jobs, and a registrar should be able to do the first without the second. Both
+  are portfolio-capped: there is no managing groups from inside one group. The group page
+  answers "who does this change affect" by listing the live grants held on it, and
+  `grantAccess` now refuses a grant whose `scope_ref` points at no group and no property —
+  a grant pointing at nothing looks like access on the People page and confers none.
+
 ### 2.3 The firewall, enforced in schema
 
 `mhotels-inspire/docs/29 §3` is enforced today as a data-flow rule and a console UI
@@ -432,9 +490,9 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
      CLI. `test/cli-imports.test.ts` walks the import graph and fails on any bundler-only
      specifier, after this broke sunrise once.
 
-   **Still open in this step: `PropertyGroup` and `PropertyGroupMember`.** The `group` scope
-   exists and resolves; nothing can be granted at it yet because no groups exist. That is §2.2,
-   and it is the piece that makes regions answerable.
+   **`PropertyGroup` and `PropertyGroupMember` — done 2026-09-15.** §2.2 is built: the tables,
+   a rule engine, the Groups section, a CLI, and group-aware grant resolution. What the
+   implementation forced is written up in §2.2 under *What building it settled*.
 
 5. **Role catalog out of the enum** — done for the console, open for Inspire. The catalog and
    its versioning live here now (`src/auth/catalog.ts`, seeded by `npm run db:seed`), and the
@@ -457,7 +515,15 @@ Steps 1–5 stand on their own. Steps 7–8 are worthless without them.
 ## 5. Open decisions
 
 - Region *boundaries* — deliberately deferred. §2.2 exists so this can stay open
-  indefinitely.
+  indefinitely, and as of 2026-09-15 drawing one is an afternoon in the Groups section.
+- **Whether a property-scope grant should hold the inn code or the internal property id.**
+  It holds the code today, which is what the People form asks for and what a human can
+  check — but a rebrand changes the code, and a grant on the old one then points at a
+  retired code. Membership already sidesteps this by keying on the id. The options are: move
+  `grant.scope_ref` to ids and render the code for display; keep codes and repoint grants on
+  rebrand (a write, and the audit trail has to say so); or keep codes and accept that a
+  rebrand needs a transfer. Nothing forces the decision until the first rebrand of a hotel
+  somebody holds a property grant on.
 - Revocation lag target for financial roles (drives token TTL).
 - Cross-app auth: whether Inspire and InspiredREV authenticate against a mirror of
   `person`/`grant` (R2 says yes) and what the refresh cadence is.

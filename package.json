@@ -1,7 +1,7 @@
 {
   "name": "mhg-console",
   "version": "0.1.0",
-  "description": "MHG Corporate Console — the registry plane for properties, groups, people and the Inn Code Standard.",
+  "description": "MHG Corporate Console \u2014 the registry plane for properties, groups, people and the Inn Code Standard.",
   "license": "UNLICENSED",
   "private": true,
   "type": "module",
@@ -12,12 +12,14 @@
     "test": "node --test --experimental-strip-types \"test/**/*.test.ts\"",
     "test:watch": "node --test --watch --experimental-strip-types \"test/**/*.test.ts\"",
     "issue": "node --experimental-strip-types scripts/issue.ts",
+    "groups": "node --env-file-if-exists=.env --experimental-strip-types scripts/groups.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "verify:constraints": "./prisma/verify/constraints.sh",
+    "verify:groups": "node --env-file-if-exists=.env --experimental-strip-types scripts/verify-groups.ts",
     "db:seed": "node --env-file-if-exists=.env --experimental-strip-types prisma/seed.ts",
     "sunrise": "node --env-file-if-exists=.env --experimental-strip-types scripts/sunrise.ts"
   },

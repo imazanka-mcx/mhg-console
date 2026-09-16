@@ -81,7 +81,8 @@ model Property {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  codes InnCode[]
+  codes   InnCode[]
+  groups  PropertyGroupMember[]
 
   @@index([status])
   @@index([marketCode])
@@ -154,7 +155,7 @@ model MarketClaim {
 
 /// Where a grant applies. Polymorphic from day one even though only `portfolio`
 /// has anything to point at yet — adding an above-property axis later must be a
-/// row, never a migration (§2.2). `group` is reserved for PropertyGroup.
+/// row, never a migration (§2.2). `group` points at a PropertyGroup id.
 enum Scope {
   portfolio
   group
@@ -288,4 +289,105 @@ model AuditEvent {
   @@index([at])
   @@index([subject])
   @@map("audit_event")
+}
+
+// ───────────────────────────── Groups ──────────────────────────────────────
+// docs/01 §2.2. The regional problem, solved by refusing to model regions.
+//
+// A region is not a tier in a hierarchy; it is a SET of properties somebody
+// drew. Modelling it as a scope makes every redraw a migration, which is why
+// the boundaries could never be settled. Modelling it as membership makes a
+// redraw an edit to two rows, so the boundaries never have to be settled at
+// all — they can change weekly and no grant is touched.
+//
+// The whole above-property axis therefore lives in DATA: `Scope` stays three
+// values forever, and a new way of slicing the portfolio is a new group row,
+// never a schema change. That is the invariant this pair of tables exists to
+// hold.
+
+/// A reporting label, and NOTHING more. Permission evaluation never reads it —
+/// deliberately, so regional coverage can be reported without the access engine
+/// ever needing to know what a region is.
+enum GroupKind {
+  region
+  brand
+  entity
+  ad_hoc
+  audit
+
+  @@map("group_kind")
+}
+
+/// How membership is decided. Both modes MATERIALIZE into PropertyGroupMember —
+/// a rule is a way of maintaining rows, not a substitute for them, so resolving
+/// access is one shape of query no matter how a property got in.
+enum MembershipMode {
+  manual
+  rule
+
+  @@map("membership_mode")
+}
+
+/// A set of properties, above property and below portfolio.
+///
+/// `id` is a slug minted once and never changed (`grp_midwest`), because grants
+/// point at it — the same discipline as a property id (G1). Renaming a group is
+/// a display change; the id it was granted against survives it.
+model PropertyGroup {
+  id   String    @id
+  kind GroupKind
+  name String
+
+  /// What this group is for. Groups grant access, so an unexplained one is an
+  /// unexplained set of people's reach.
+  description String @default("")
+
+  membershipMode MembershipMode @default(manual) @map("membership_mode")
+
+  /// Only for `rule` groups. The shape is src/groups/rules.ts — a closed
+  /// vocabulary, validated before it is stored, because a rule that silently
+  /// matches nothing is indistinguishable from a group nobody joined.
+  ruleJson Json? @map("rule_json")
+
+  /// When the rule last materialized. A stale timestamp on a rule group is an
+  /// Oversight exception (§3.1): membership drifted from what the rule says.
+  syncedAt DateTime? @map("synced_at")
+
+  /// Archived groups drop out of the pickers but keep resolving, because a
+  /// group is not how access is closed — a grant is. Nothing is deleted (§2.5).
+  archivedAt DateTime? @map("archived_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members PropertyGroupMember[]
+
+  @@index([kind])
+  @@index([archivedAt])
+  @@map("property_group")
+}
+
+/// Membership. Keyed on the property's IMMUTABLE id, never its inn code, so a
+/// rebrand cannot drop a hotel out of its region (G1, G2). Resolution reads the
+/// property's CURRENT code through this row, which is what makes group coverage
+/// survive a code change for free.
+///
+/// A property belongs to as many groups as it likes — Midwest and a PIP
+/// transition group and its brand group at once. A single-parent hierarchy is
+/// the rigidity that made this hard in the first place.
+model PropertyGroupMember {
+  groupId    String @map("group_id")
+  propertyId String @map("property_id")
+
+  /// Null for a rule-materialized row. Manual membership is attributed, because
+  /// adding a property to a group widens somebody's access.
+  addedById String?  @map("added_by_id")
+  addedAt   DateTime @default(now()) @map("added_at")
+
+  group    PropertyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  property Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, propertyId])
+  @@index([propertyId])
+  @@map("property_group_member")
 }

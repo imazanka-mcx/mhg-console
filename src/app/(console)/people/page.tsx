@@ -2,6 +2,7 @@ import { prisma } from '../../../db.ts';
 import { permissionsAt } from '../../../auth/access.ts';
 import { currentActor } from '../../../auth/actor.ts';
 import { ROLES } from '../../../auth/catalog.ts';
+import { listGroups } from '../../../groups/groups.ts';
 import { ProvisionForms } from './provision-forms.tsx';
 import { RevokeButton } from './revoke-button.tsx';
 
@@ -18,6 +19,13 @@ export default async function PeoplePage() {
   const actor = await currentActor();
   const held = actor ? await permissionsAt(actor.id) : new Set<string>();
   const canManage = held.has('people.manage');
+
+  const groups = (await listGroups()).map((g) => ({
+    id: g.id,
+    name: g.name,
+    kind: g.kind as string,
+    members: g._count.members,
+  }));
 
   const people = await prisma.person.findMany({
     orderBy: { createdAt: 'asc' },
@@ -37,7 +45,7 @@ export default async function PeoplePage() {
         properties, or coming back later, is a new grant rather than a new account.
       </p>
 
-      {canManage ? <ProvisionForms roles={ROLES} /> : null}
+      {canManage ? <ProvisionForms roles={ROLES} groups={groups} /> : null}
 
       <div className="mt-8 space-y-4">
         {people.map((p) => {

@@ -126,6 +126,68 @@ describe('scope coverage', () => {
   });
 });
 
+describe('a group grant reaches its members (§2.2)', () => {
+  const midwest = { scope: 'group', scopeRef: 'grp_midwest' } as const;
+  const brandHx = { scope: 'group', scopeRef: 'grp_hampton' } as const;
+  const evvbc = { scope: 'property', scopeRef: 'EVVBC' } as const;
+
+  /** EVVBC is in Midwest and in the Hampton brand group; OWBBC is in neither. */
+  const evvbcGroups = new Set(['grp_midwest', 'grp_hampton']);
+  const noGroups = new Set<string>();
+
+  test('a group grant covers a property inside the group', () => {
+    assert.equal(covers(midwest, evvbc, evvbcGroups), true);
+  });
+
+  test('…and not one outside it', () => {
+    assert.equal(covers(midwest, evvbc, noGroups), false);
+  });
+
+  test('a property in several groups is reached by a grant on any of them', () => {
+    assert.equal(covers(brandHx, evvbc, evvbcGroups), true);
+    // The single-parent hierarchy is what made the regional problem hard; this
+    // is the assertion that says there isn't one.
+  });
+
+  test('membership is the only thing that changed — the grant is identical', () => {
+    // Redrawing Midwest is an edit to PropertyGroupMember. The grant row below
+    // is byte-for-byte the same before and after.
+    assert.equal(covers(midwest, evvbc, new Set(['grp_midwest'])), true);
+    assert.equal(covers(midwest, evvbc, new Set(['grp_southeast'])), false);
+  });
+
+  test('a group grant still covers the group itself', () => {
+    assert.equal(covers(midwest, midwest), true);
+    assert.equal(covers(midwest, brandHx), false);
+  });
+
+  test('a group grant with no ref covers nothing', () => {
+    assert.equal(covers({ scope: 'group', scopeRef: null }, evvbc, evvbcGroups), false);
+  });
+
+  test('a property grant does not reach the groups that property is in', () => {
+    // Holding one member of a set is not holding the set — otherwise a single
+    // property grant would widen itself the moment somebody drew a region
+    // around that hotel.
+    assert.equal(covers(evvbc, midwest, evvbcGroups), false);
+  });
+
+  test('a portfolio grant needs no membership to cover anything', () => {
+    assert.equal(covers({ scope: 'portfolio', scopeRef: null }, evvbc, noGroups), true);
+  });
+
+  test('group expansion cannot smuggle a capped permission down to a property', () => {
+    // The firewall is evaluated at the GRANT's scope, not the target's. A group
+    // grant is refused at issue time if it carries ar.view, so there is never a
+    // live grant for this expansion to widen.
+    const arView = { key: 'ar.view', scopeMax: 'property' } as const;
+    assert.deepEqual(
+      firewallViolations([arView], 'group').map((p) => p.key),
+      ['ar.view'],
+    );
+  });
+});
+
 describe('grants are temporal (§2.5)', () => {
   const day = (s: string) => new Date(s);
 
