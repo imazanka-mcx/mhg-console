@@ -146,23 +146,41 @@ Built and **verified end to end against the live Neon database**:
    forces it until the first rebrand of a hotel somebody holds a property grant
    on.
 
-**Deployment: prepared, not yet provisioned.** `DEPLOY.md` is the runbook and
-the repo side is done — `vercel.json`, `scripts/vercel-install.sh`,
-`scripts/vercel-build.sh`, `engines.node`, and the `rhel-openssl-3.0.x` engine
-target. What is left is account work: the Neon `dev` branch, the read-only PAT
-for `@mcx/inn-code`, the Vercel project and its per-environment variables, and
-the CNAME for **mhgconsole.mazcoenterprises.com**.
+**Deployed 2026-09-16 — https://mhgconsole.mazcoenterprises.com.** Vercel,
+against Neon, on the Hobby plan. `DEPLOY.md` is the runbook; the shape is:
 
-Two shapes there worth knowing before touching them:
+- **Neon is split.** `production` — the project's default branch, and the
+  database every migration and `npm run sunrise` has ever run against — is what
+  the deployed app reads and writes. `dev` is a branch off it and is what local
+  `.env` points at, because an inn code claim is permanent (G3, M7) and
+  `npm run issue` has no staging mode. Re-branching `dev` mints a new endpoint
+  host, so `.env` and the Vercel Preview variables both need the new strings
+  when that happens.
+- **`migrate deploy` runs only when `VERCEL_ENV=production`**
+  (`scripts/vercel-build.sh`). Otherwise opening a pull request could migrate
+  the production registry. Nothing typed at a laptop advances the production
+  schema any more — only a production deploy does.
+- **The private dependency is cloned with a token.**
+  `scripts/vercel-install.sh` rewrites the ssh:// URL for `@mcx/inn-code` to
+  HTTPS using `INN_CODE_TOKEN`, a read-only fine-grained PAT scoped to
+  `mhg-icgenerator`. **It has an expiry.** When it lapses, the build fails at
+  install with a permission error that reads exactly like a broken SSH key.
+- **The DNS target is project-specific** — `b28e2d374f123233.vercel-dns-017.com`,
+  not the generic `cname.vercel-dns.com`. Take it from Vercel's Domains tab.
 
-- **Neon splits into `main` (production) and `dev` (local).** The database every
-  migration and `npm run sunrise` has run against so far becomes production and
-  already holds the owner account — there is no sunrise step on first deploy.
-  Local `.env` moves to the dev branch, because a code claim is permanent (G3,
-  M7) and `npm run issue` typed at a laptop has no staging mode.
-- **`migrate deploy` runs only when `VERCEL_ENV=production`.** Otherwise opening
-  a pull request could migrate the production registry. Previews point at the
-  dev branch.
+**Loose ends from that deploy, in the order they matter:**
+
+1. **Preview and Development environment variables may still point at
+   `production`.** Variables added in Vercel's import modal apply to all three
+   environments at once. Until Preview and Development have their own
+   `DATABASE_URL` / `DIRECT_URL` on the `dev` branch, a preview deploy reads and
+   writes the real registry — which is the entire thing the Neon split exists to
+   prevent. Check this before trusting a preview.
+2. **Local `.env` defines `DATABASE_URL` and `DIRECT_URL` twice** — the
+   production pair first, dev appended below. Dev wins under both Node's
+   `--env-file` and the dotenv parse Next and Prisma use, so the behaviour is
+   currently right. It is load-order luck rather than configuration, and the
+   cost of it ever flipping is a permanently claimed code.
 
 ---
 

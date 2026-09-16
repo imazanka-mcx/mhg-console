@@ -20,8 +20,8 @@ here should ever grow into a request-time dependency for them.
 | Neon `production` branch | already exists (the project's default) | the production registry — migrated and seeded, with the sunrise owner account already on it |
 | Neon `dev` branch | §2 | so local work cannot burn a code in the system of record |
 | Fine-grained GitHub PAT | §3 | Vercel cannot clone the private `@mcx/inn-code` over SSH |
-| Vercel project | §4 | |
-| DNS record | §5 | |
+| Vercel project | §4 — **done 2026-09-16** | |
+| DNS record | §5 — **done 2026-09-16** | |
 
 ---
 
@@ -151,18 +151,29 @@ environment, which is the emergency lever if a cookie is ever suspect.
 
 Vercel → Project → Settings → Domains → add `mhgconsole.mazcoenterprises.com`.
 
-At whoever holds `mazcoenterprises.com`:
+At whoever holds `mazcoenterprises.com`. **The target is project-specific** —
+Vercel no longer hands out the generic `cname.vercel-dns.com` for new projects,
+so take the value from Vercel's Domains tab rather than from any runbook,
+including this one. What this project resolved to, as of 2026-09-16:
 
 ```
-CNAME   mhgconsole   cname.vercel-dns.com.
+CNAME   mhgconsole   b28e2d374f123233.vercel-dns-017.com.
 ```
 
-Vercel issues the certificate once the record resolves. Take the value Vercel
-shows you over the one written here if they differ — it occasionally does.
+Two things that waste an afternoon here. The host field is `mhgconsole`, not
+the full name — most DNS panels append the zone to whatever you type, and
+typing it out gives you `mhgconsole.mazcoenterprises.com.mazcoenterprises.com`,
+which resolves to nothing and looks like propagation lag. And propagation lag
+is real: until it clears, the name genuinely does not resolve anywhere, so
+"name or service not known" is not evidence that the record is wrong.
+
+Vercel issues the certificate once the record resolves.
+
+**Live and verified 2026-09-16:** the domain serves `/login` over HTTPS.
 
 ---
 
-## 6. First deploy
+## 6. First deploy — done 2026-09-16
 
 There is **no sunrise step.** `npm run sunrise` refuses once any person exists,
 and the production branch already holds your owner account — it is the same
