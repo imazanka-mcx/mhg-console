@@ -4,7 +4,7 @@
  *   npm run issue -- propose --name "BYX Collection Evansville East" \
  *                            --city Evansville --state IN --brand BC --submarket East
  *   npm run issue -- issue   --name "…" --city … --state … --brand … --status pipeline --confirm
- *   npm run issue -- status  --code EVVBC --to active --confirm
+ *   npm run issue -- status  --code EVVBC --to active --reason "opened 3 Nov" --confirm
  *   npm run issue -- list
  *   npm run issue -- rebrand --code EVVBC --brand LX --confirm
  *
@@ -14,7 +14,9 @@
  * default had better not be "write".
  */
 import { prisma } from '../src/db.ts';
-import { issueProperty, proposeCode, rebrandProperty, registryFor } from '../src/issuance.ts';
+import { changeStatus, issueProperty, proposeCode, rebrandProperty, registryFor } from '../src/issuance.ts';
+import { checkTransition } from '../src/lifecycle.ts';
+import type { ShellSetup } from '../src/setup.ts';
 import type { IssueRequest, PropertyRecord, PropertyStatus, TraceStep } from '@mcx/inn-code';
 
 type Flags = Record<string, string | boolean>;
@@ -135,7 +137,14 @@ async function main(): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      const result = await issueProperty(req);
+      const setup: Partial<ShellSetup> = {};
+      const tz = str(flags, 'timezone');
+      const cur = str(flags, 'currency');
+      const opens = str(flags, 'opens');
+      if (tz !== undefined) setup.timezone = tz;
+      if (cur !== undefined) setup.currency = cur;
+      if (opens !== undefined) setup.expectedOpenDate = opens;
+      const result = await issueProperty(req, setup);
       if (!result.ok) {
         console.log(`\n  ✗ ${result.failure.rule}  ${result.failure.message}\n`);
         showTrace(result.trace);
@@ -180,6 +189,8 @@ async function main(): Promise<void> {
       const registry = registryFor();
       const existing = await registry.get(code);
       if (!existing) fail(`${code} is not in the registry.`);
+      const check = checkTransition(existing!.status, to!);
+      if (!check.ok) fail(check.reason);
       if (!flags['confirm']) {
         console.log(`\n  Would move ${code}: ${existing!.status} → ${to}`);
         console.log('  Rerun with --confirm.');
@@ -192,9 +203,11 @@ async function main(): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      await registry.setStatus(code, to);
-      const after = await registry.get(code);
-      console.log(`\n  ✓ ${code}: ${existing!.status} → ${after?.status}\n`);
+      const reason = str(flags, 'reason');
+      if (!reason) fail('status needs --reason — it is recorded in the audit trail');
+      const moved = await changeStatus(code!, to!, null, reason!);
+      console.log(`\n  ✓ ${code}: ${moved.from} → ${moved.to}  (${moved.transition})`);
+      console.log('    published to the shell stream — consumers hear it on the next delivery\n');
       return;
     }
 
@@ -222,15 +235,18 @@ async function main(): Promise<void> {
     propose  --name … --city … --state … --brand … [--submarket …] [--franchisor …]
              Shows the code and the rules that produced it. Writes nothing.
 
-    issue    (same flags) --confirm
-             Claims the code. Permanent.
+    issue    (same flags) [--timezone America/Chicago] [--currency USD]
+             [--opens 2027-04-01] --confirm
+             Claims the code. Permanent. Publishes the property to the shell
+             stream, so Inspire and InspiredREV see it while it is pipeline.
 
     rebrand  --code EVVBC --brand LX --confirm
              Issues a new code, retires the old one, keeps the property id.
 
-    status   --code EVVBC --to active --confirm
-             Moves a code through its lifecycle. G6 issues at LOI as
-             pipeline; it becomes active at opening.
+    status   --code EVVBC --to active --reason "…" --confirm
+             Moves a code through its lifecycle — forward only:
+             pipeline → active (open), pipeline → retired (deal died),
+             active → retired (exit). Retired is terminal (G3).
 
     list     Every code ever issued, retired included.
 

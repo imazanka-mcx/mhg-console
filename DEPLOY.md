@@ -127,6 +127,7 @@ production registry.
 | `DIRECT_URL` | Neon **`production`**, direct | Neon **`dev`**, direct |
 | `AUTH_SECRET` | its own `openssl rand -base64 48` | a different one |
 | `INN_CODE_TOKEN` | the PAT from §3 | the same PAT |
+| `CRON_SECRET` | its own random string | — (crons run on production only) |
 
 `AUTH_SECRET` is deliberately not shared with your laptop. It signs the session
 cookie and nothing else; separate values mean a local session and a production
@@ -192,11 +193,78 @@ that the deploy was a production one and not a preview.
 
 ## 7. What is deliberately not here
 
-- **No cron, no background jobs.** Nothing in the registry needs to happen on a
-  schedule yet. Rule groups re-materialize on issuance and on demand.
+- **One cron, and only as a safety net.** `/api/shell/cron` runs daily (Hobby's
+  limit) and pushes any shell subscriber that fell behind. Every registry write
+  already delivers on the spot; the cron only matters when a consumer was down.
 - **No preview database seeding.** Previews share the dev branch. If that
   becomes a problem, the answer is a branch per preview, not a shared scratch
   database.
-- **No mirroring to Inspire or InspiredREV.** That is `docs/01 §6`, and it is
-  the highest-risk step in the migration order precisely because it inverts a
-  direction that currently works. Shadow it before switching it.
+- **No shared database with Inspire or InspiredREV.** Identity reaches them on
+  the shell stream (§8) and nothing else.
+
+---
+
+## 8. Wiring the shell stream — Inspire and InspiredREV (docs/01 §1.4)
+
+Built 2026-10-03 across all three repos. Order matters only in one place: a
+consumer's receiver must exist before the console pushes to it, so **consumers
+deploy first.** A receiver with no secret set answers 401 to everything, so an
+early deploy is harmless.
+
+### On the Mac, before any deploy
+
+The migrations in all three repos were written by hand in the Linux workspace
+(the schema engine cannot run there), so the generated clients are stale until
+this runs. In each repo, against its **dev** database:
+
+```bash
+# mhg-console
+npx prisma migrate dev && npm run typecheck && npm test
+
+# mhotels-inspire and mhg-inspiredrev
+npx prisma migrate dev && npx tsc --noEmit && npm run test:registry
+```
+
+`migrate dev` should apply the new migration and report no drift. Until it
+runs, `typecheck` reports errors about `shellEvent`, `shellSubscriber`,
+`registryProperty`, `registryPropertyId` and friends — all missing generated
+delegates, none real.
+
+### Deploy, in this order
+
+1. **Inspire** and **InspiredREV** — push `main`. Their builds run
+   `prisma migrate deploy`. Both migrations are additive.
+2. **The console** — push `main`. Production applies `*_shell_stream`. Add
+   `CRON_SECRET` to the production environment first, or the cron answers 503.
+
+### Subscribe the consumers — from the Mac, `.env` on production
+
+```bash
+npm run shell -- subscribe --name inspire \
+  --url https://inspire.mazcoenterprises.com/api/registry/v1/shell --confirm
+npm run shell -- subscribe --name inspiredrev \
+  --url https://inspiredrev.mazcoenterprises.com/api/registry/v1/shell --confirm
+```
+
+Each prints a secret **once**. Set it in that consumer's Vercel project as
+`REGISTRY_SHELL_SECRET` (production) and redeploy it. If either consumer has more
+than one organization, also set `REGISTRY_ORG_ID`; with exactly one it is found
+on its own.
+
+### First delivery
+
+```bash
+npm run shell -- backfill --confirm    # announce every existing property once
+npm run shell -- deliver
+npm run shell -- subscribers           # both at the stream head, no errors
+npm run shell -- show --code ALQBC     # the shell, and "current" for both
+```
+
+Then look: Inspire `/corporate` lists both codes under **From the MHG
+registry** with **Stand up**; InspiredREV `/admin` lists both as
+`registry · pipeline` with no Inspire key.
+
+If a consumer answers `Signature does not match`, its `REGISTRY_SHELL_SECRET`
+is not the one printed — rotate with `subscribe … --rotate --confirm` and set
+the new one. `Could not reach` means the URL or the deploy. Either way nothing
+is lost: the cursor waits, and the next `deliver` resumes from it.

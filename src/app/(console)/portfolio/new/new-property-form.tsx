@@ -9,6 +9,7 @@ import {
   type IssueState,
   type ProposeState,
 } from './actions.ts';
+import { COMMON_TIMEZONES } from '../../../../setup.ts';
 
 const LABEL = 'mb-1 block text-xs font-medium text-slate-500';
 const INPUT =
@@ -150,6 +151,50 @@ export function NewPropertyForm({ brands }: { brands: { code: string; name: stri
           </div>
         </div>
 
+        <div className="border-t border-slate-100 pt-5">
+          <p className="mb-3 text-xs text-slate-500">
+            What Inspire and InspiredREV need to stand the hotel up. These do not affect the code;
+            they travel with it on the shell stream, and can be edited later.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className={LABEL} htmlFor="timezone">
+                Timezone
+              </label>
+              <select id="timezone" name="timezone" defaultValue="America/New_York" className={INPUT}>
+                {COMMON_TIMEZONES.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </select>
+              {errors['timezone'] ? (
+                <p className="mt-1 text-xs text-danger-600">{errors['timezone']}</p>
+              ) : null}
+            </div>
+            <div>
+              <label className={LABEL} htmlFor="currency">
+                Currency
+              </label>
+              <input id="currency" name="currency" defaultValue="USD" maxLength={3} className={`${INPUT} uppercase`} />
+              {errors['currency'] ? (
+                <p className="mt-1 text-xs text-danger-600">{errors['currency']}</p>
+              ) : null}
+            </div>
+            <div>
+              <label className={LABEL} htmlFor="expectedOpenDate">
+                Expected opening
+              </label>
+              <input id="expectedOpenDate" name="expectedOpenDate" type="date" className={INPUT} />
+              {errors['expectedOpenDate'] ? (
+                <p className="mt-1 text-xs text-danger-600">{errors['expectedOpenDate']}</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-400">Blank if not yet known.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="flex items-center gap-3 pt-1">
           <Submit variant="quiet">Propose a code</Submit>
           <span className="text-xs text-slate-400">Reads the registry. Writes nothing.</span>
@@ -182,7 +227,7 @@ export function NewPropertyForm({ brands }: { brands: { code: string; name: stri
           <form action={confirm} className="mt-6 border-t border-slate-100 pt-5">
             {/* Replays the same inputs the proposal was derived from — the
                 action re-derives rather than trusting the code shown above. */}
-            {Object.entries(proposal.input).map(([k, v]) =>
+            {Object.entries({ ...proposal.input, ...proposal.setup }).map(([k, v]) =>
               v === undefined ? null : <input key={k} type="hidden" name={k} value={String(v)} />,
             )}
             <p className="mb-3 text-sm text-slate-600">

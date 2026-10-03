@@ -4,7 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
+import { requirePermission } from '../../../../auth/actor.ts';
 import { issueProperty, proposeCode } from '../../../../issuance.ts';
+import { checkSetup, type ShellSetup } from '../../../../setup.ts';
 import type { IssueRequest, TraceStep } from '@mcx/inn-code';
 
 /**
@@ -29,13 +31,18 @@ const Input = z.object({
   submarket: z.string().trim().max(80).optional(),
   franchisorCode: z.string().trim().max(20).optional(),
   status: z.enum(['pipeline', 'active']).default('pipeline'),
+  // Shell fields (docs/01 §1.3). Not part of the code's derivation — they ride
+  // along so the property reaches Inspire and InspiredREV complete.
+  timezone: z.string().trim().min(1, 'Pick a timezone'),
+  currency: z.string().trim().default('USD'),
+  expectedOpenDate: z.string().trim().default(''),
 });
 
 export type ProposeState =
   | { kind: 'idle' }
   | { kind: 'invalid'; errors: Record<string, string> }
   | { kind: 'refused'; rule: string; message: string; trace: TraceStep[] }
-  | { kind: 'proposed'; code: string; trace: TraceStep[]; input: IssueRequest };
+  | { kind: 'proposed'; code: string; trace: TraceStep[]; input: IssueRequest; setup: ShellSetup };
 
 export type IssueState =
   | { kind: 'idle' }
@@ -63,7 +70,18 @@ function read(form: FormData) {
     submarket: form.get('submarket') ?? undefined,
     franchisorCode: form.get('franchisorCode') ?? undefined,
     status: form.get('status') ?? 'pipeline',
+    timezone: form.get('timezone') ?? '',
+    currency: form.get('currency') ?? 'USD',
+    expectedOpenDate: form.get('expectedOpenDate') ?? '',
   });
+}
+
+function toSetup(parsed: z.infer<typeof Input>): ShellSetup {
+  return {
+    timezone: parsed.timezone,
+    currency: parsed.currency,
+    expectedOpenDate: parsed.expectedOpenDate,
+  };
 }
 
 function fieldErrors(error: z.ZodError): Record<string, string> {
@@ -78,6 +96,8 @@ function fieldErrors(error: z.ZodError): Record<string, string> {
 export async function proposeAction(_prev: ProposeState, form: FormData): Promise<ProposeState> {
   const parsed = read(form);
   if (!parsed.success) return { kind: 'invalid', errors: fieldErrors(parsed.error) };
+  const setup = checkSetup(toSetup(parsed.data));
+  if (!setup.ok) return { kind: 'invalid', errors: setup.errors as Record<string, string> };
 
   const input = toRequest(parsed.data);
   const result = await proposeCode(input);
@@ -94,10 +114,16 @@ export async function proposeAction(_prev: ProposeState, form: FormData): Promis
     code: result.candidate.code,
     trace: result.candidate.trace,
     input,
+    setup: toSetup(parsed.data),
   };
 }
 
 export async function issueAction(_prev: IssueState, form: FormData): Promise<IssueState> {
+  try {
+    await requirePermission('property.issue');
+  } catch {
+    return { kind: 'refused', rule: 'access', message: 'You are not permitted to issue inn codes.' };
+  }
   const parsed = read(form);
   if (!parsed.success) {
     return { kind: 'refused', rule: 'G4', message: 'The form no longer validates — start again.' };
@@ -108,7 +134,12 @@ export async function issueAction(_prev: IssueState, form: FormData): Promise<Is
   // issueCode re-runs the ladder and retries on conflict, so the operator gets
   // the next legal code instead of a failure — or a clean refusal if the market
   // itself is gone (M7).
-  const result = await issueProperty(toRequest(parsed.data));
+  let result;
+  try {
+    result = await issueProperty(toRequest(parsed.data), toSetup(parsed.data));
+  } catch (err) {
+    return { kind: 'refused', rule: 'setup', message: err instanceof Error ? err.message : String(err) };
+  }
   if (!result.ok) {
     return { kind: 'refused', rule: result.failure.rule, message: result.failure.message };
   }

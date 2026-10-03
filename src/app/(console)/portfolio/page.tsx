@@ -61,7 +61,12 @@ export default async function PortfolioPage() {
               {codes.map((c) => (
                 <tr key={c.code} className="align-top">
                   <td className="border-b border-slate-100 py-2.5 pr-4">
-                    <span className="font-mono font-semibold text-slate-900">{c.code}</span>
+                    <Link
+                      href={`/portfolio/${c.propertyId}`}
+                      className="font-mono font-semibold text-slate-900 hover:text-brand-600 hover:underline"
+                    >
+                      {c.code}
+                    </Link>
                     {c.predecessorCode ? (
                       <div className="text-xs text-slate-400">
                         replaces <span className="font-mono">{c.predecessorCode}</span>

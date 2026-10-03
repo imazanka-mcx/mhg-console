@@ -20,6 +20,7 @@ const ENTRYPOINTS = [
   'scripts/sunrise.ts',
   'scripts/issue.ts',
   'scripts/groups.ts',
+  'scripts/shell.ts',
   'scripts/verify-groups.ts',
   'prisma/seed.ts',
 ];

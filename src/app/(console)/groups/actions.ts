@@ -16,6 +16,7 @@ import {
   type GroupKind,
 } from '../../../groups/groups.ts';
 import { RULE_FIELDS, RuleError } from '../../../groups/rules.ts';
+import { deliverAllQuietly } from '../../../shell/publish.ts';
 
 /**
  * Group actions (docs/01 §2.2).
@@ -95,6 +96,7 @@ export async function createGroupAction(_prev: GroupState, form: FormData): Prom
       rule,
       actorId: actor.id,
     });
+    await deliverAllQuietly(); // a rule group's members carry it in their shells
     revalidatePath('/groups');
     return { ok: `${group.name} created as ${group.id}.` };
   } catch (err) {
@@ -140,6 +142,7 @@ export async function addMemberAction(_prev: GroupState, form: FormData): Promis
   if (!ref) return { error: 'Give an inn code.' };
   try {
     await addMember(id, ref, actor.id);
+    await deliverAllQuietly();
     revalidatePath(`/groups/${id}`);
     return { ok: `${ref.toUpperCase()} added. Everyone holding a grant on this group now reaches it.` };
   } catch (err) {
@@ -158,6 +161,7 @@ export async function removeMemberAction(_prev: GroupState, form: FormData): Pro
   const propertyId = String(form.get('propertyId') ?? '');
   try {
     await removeMember(id, propertyId, actor.id);
+    await deliverAllQuietly();
     revalidatePath(`/groups/${id}`);
     return { ok: 'Removed. Grants on this group no longer reach it.' };
   } catch (err) {
@@ -175,6 +179,7 @@ export async function syncGroupAction(_prev: GroupState, form: FormData): Promis
   const id = String(form.get('groupId') ?? '');
   try {
     const r = await materializeGroup(id, actor.id);
+    await deliverAllQuietly();
     revalidatePath(`/groups/${id}`);
     return { ok: `Synced: ${r.added.length} added, ${r.removed.length} removed, ${r.total} members.` };
   } catch (err) {

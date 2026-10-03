@@ -83,11 +83,31 @@ model Property {
   effectiveDate   String         @map("effective_date")
   propCode        String         @map("prop_code")
 
+  // ── Shell fields the engine does not know about (docs/01 §1.3) ──────────
+  // The Inn Code engine issues identity from name, place and flag. A consumer
+  // standing the hotel up also needs to know what clock and what money it runs
+  // on, so those ride on the property here rather than in the engine.
+
+  /// IANA zone. Defaults to Eastern so the two pre-shell rows backfill to a
+  /// real value; the New Property form asks for it explicitly.
+  timezone         String  @default("America/New_York")
+  /// ISO 4217.
+  currency         String  @default("USD")
+  /// Planned opening, YYYY-MM-DD. Empty when not yet known. Distinct from
+  /// effectiveDate, which is when the CODE was issued (G6), not the hotel.
+  expectedOpenDate String  @default("") @map("expected_open_date")
+
+  /// Bumped on every change a consumer must hear about. Consumers apply a
+  /// shell only if its version is newer than the one they hold, which is what
+  /// makes delivery idempotent and safe to repeat (§1.4).
+  shellVersion     Int     @default(0) @map("shell_version")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   codes   InnCode[]
   groups  PropertyGroupMember[]
+  shellEvents ShellEvent[]
 
   @@index([status])
   @@index([marketCode])
@@ -395,4 +415,59 @@ model PropertyGroupMember {
   @@id([groupId, propertyId])
   @@index([propertyId])
   @@map("property_group_member")
+}
+
+// ───────────────────────────── The shell stream ────────────────────────────
+// docs/01 §1.4. How identity leaves this app (R1) without this app ever being
+// on anybody's critical path (R2).
+//
+// `shell_event` is a transactional outbox of CHANGE NOTICES, not of payloads:
+// a row says "property X changed, now at version N". The shell itself is built
+// from the property's current state at delivery time. That choice is what
+// makes the stream safe to replay from zero — a consumer that replays history
+// arrives at the current shell for every property, never at a stale one — and
+// it means a burst of edits to one hotel delivers once.
+
+/// One change notice. `seq` is the global order consumers acknowledge against.
+model ShellEvent {
+  seq          Int      @id @default(autoincrement())
+  propertyId   String   @map("property_id")
+  /// The property's shellVersion after this change.
+  shellVersion Int      @map("shell_version")
+  /// Why — `issued`, `status`, `rebrand`, `setup`, `groups`, `backfill`.
+  reason       String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId, seq])
+  @@map("shell_event")
+}
+
+/// A system that mirrors the registry. Exactly two exist: Inspire and
+/// InspiredREV (§1.4). Anything else gets the inn code as a label and nothing
+/// more (§1.6).
+model ShellSubscriber {
+  /// `inspire`, `inspiredrev`.
+  name    String  @id
+  /// The consumer's receiver, e.g. https…/api/registry/v1/shell
+  url     String
+  /// HMAC key both sides hold. Stored plaintext because every delivery is
+  /// signed with it — the same tradeoff Inspire makes for WebhookEndpoint.secret.
+  secret  String
+  active  Boolean @default(true)
+
+  /// Highest shell_event.seq the consumer has acknowledged applying.
+  /// Resetting it to 0 replays the whole stream; consumers ignore anything
+  /// not newer than what they hold, so a replay is always safe.
+  cursor  Int     @default(0)
+
+  lastAttemptAt   DateTime? @map("last_attempt_at")
+  lastDeliveredAt DateTime? @map("last_delivered_at")
+  /// Empty after a clean delivery. A non-empty value is an Oversight exception.
+  lastError       String    @default("") @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("shell_subscriber")
 }

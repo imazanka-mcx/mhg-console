@@ -29,6 +29,7 @@ import {
   resolveProperty,
   type GroupKind,
 } from '../src/groups/groups.ts';
+import { deliverAllQuietly } from '../src/shell/publish.ts';
 import { describeRule, parseRule, type GroupRule } from '../src/groups/rules.ts';
 
 type Flags = Record<string, string | string[] | boolean>;
@@ -160,6 +161,7 @@ async function main(): Promise<void> {
         actorId: null,
       });
       console.log(`  ✓ ${group.id}`);
+      if (rule) await deliverAllQuietly();
       await printGroup(group.id);
       break;
     }
@@ -179,6 +181,7 @@ async function main(): Promise<void> {
       }
       if (command === 'add') await addMember(id, property.id, null);
       else await removeMember(id, property.id, null);
+      await deliverAllQuietly(); // membership is in the property's shell
       await printGroup(id);
       break;
     }
@@ -190,6 +193,7 @@ async function main(): Promise<void> {
       for (const r of results) {
         console.log(`  ${r.groupId}: +${r.added.length} −${r.removed.length} → ${r.total} members`);
       }
+      await deliverAllQuietly();
       break;
     }
 

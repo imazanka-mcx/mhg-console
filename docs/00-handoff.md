@@ -63,7 +63,7 @@ stripping, no build step and no test dependency. `.nvmrc` pins it.
 ```bash
 nvm use
 npm install
-npm test                 # node:test, currently 69
+npm test                 # node:test, currently 94
 npm run typecheck
 npm run dev
 ```
@@ -85,6 +85,9 @@ Other commands:
 
 - `npm run issue` — the inn code CLI (`propose`, `issue`, `rebrand`, `status`,
   `list`). Writes need `--confirm`.
+- `npm run shell` — the shell stream CLI (`subscribers`, `subscribe`,
+  `backfill`, `deliver`, `rewind`, `show`). Writes need `--confirm`; `deliver`
+  does not, because consumers ignore anything not newer than what they hold.
 - `npm run groups` — the group CLI (`list`, `show`, `new`, `add`, `remove`,
   `sync`). Writes need `--confirm`; `show` prints who a membership change
   would affect before it changes.
@@ -131,6 +134,21 @@ Built and **verified end to end against the live Neon database**:
   them; `npm test` is unaffected and passes, because every test here is
   database-free by design.
 
+- **The shell stream** (`docs/01 §1.4`, 2026-10-03). Identity now flows down
+  to Inspire and InspiredREV: an outbox of change notices (`shell_event`), a
+  cursor per consumer (`shell_subscriber`), signed batches to each consumer's
+  `POST /api/registry/v1/shell`, idempotent by `shellVersion`. Inspire mirrors
+  every code into `registry_property` and offers **Stand up** on `/corporate`;
+  InspiredREV creates directory rows for pipeline properties with no Inspire
+  at all — the §6.2 break is closed. The lifecycle is a rule
+  (`src/lifecycle.ts`: forward only, retired terminal), and `/portfolio/[id]`
+  shows it with provisioning per consumer. The contract file is copied verbatim
+  into both consumers; `test/contract-copies.test.ts` catches drift.
+
+  **Authored on Linux; not yet live.** Three hand-written migrations, stale
+  generated clients, no subscribers registered. `DEPLOY.md §8` is the exact
+  order — Mac migrations, consumers deploy first, subscribe, backfill, deliver.
+
 **Open, in priority order:**
 
 1. **Inspire's role migration** (`§4 step 5`). Its `Role` enum, `RANK` and
@@ -139,7 +157,8 @@ Built and **verified end to end against the live Neon database**:
    so the `corporate_admin`-has-A/R-at-every-property hole closes the moment
    Inspire reads from here — and with groups built, a Regional DOO now has a
    scope to be granted at, which was the other half of that problem (§2.6).
-2. **Invert the directory sync** (`§6`). Highest risk; shadow it first.
+2. **Go live with the shell stream** (`DEPLOY.md §8`), then watch a real
+   rebrand and a real opening go through before relying on it.
 3. **Strip the PMS screens** from Inspire's `/corporate`.
 4. **Decide what `grant.scope_ref` holds at property scope** — the inn code
    (today) or the internal id. `docs/01 §5` states the three options. Nothing
@@ -222,6 +241,10 @@ Each of these was argued once. The reasoning matters more than the conclusion.
 - **The session guard is a layout, not middleware.** Middleware runs without a
   database — it can confirm a token parses, not whether the person is still
   active or still holds anything.
+- **The shell outbox holds notices, not payloads**; shells are built at
+  delivery. That is what makes replay-from-zero converge on current state.
+- **Inspire never syncs timezone or currency onto a live hotel.** They are
+  stamped at stand-up; a change on a trading hotel is a migration.
 - **Tests use `node:test`**, not vitest. No test dependency, runs under type
   stripping. Deliberate divergence from `mhg-icgenerator`.
 

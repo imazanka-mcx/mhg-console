@@ -7,6 +7,8 @@ constraints on what this app owns, don't have to be re-derived every session.
 Depends on: MHG-IC v1.0 (Inn Code Standard) · `mhg-icgenerator` · `mhotels-inspire` ·
 `mhg-inspiredrev`
 
+> **v0.5 (2026-10-03):** §1.4 built — the shell stream, both receivers, and the
+> lifecycle as a rule. What building it settled is written up under §1.4.
 > **v0.4:** §1.6 cut back — OpsCore is a standalone program that offers integrations,
 > not a participant in this platform, so the registry holds nothing about it.
 > **v0.3:** OpsCore question closed — not a shell consumer.
@@ -143,6 +145,91 @@ the portfolio rather than a stay.
 The shell stream has exactly two subscribers: **Inspire and InspiredREV**. Both are
 MHG-only, both are in this ecosystem, both can be keyed on the registry's `propertyId`.
 That is the whole list.
+
+#### What building it settled (2026-10-03)
+
+Built: `src/shell/` here, `src/lib/registry/` plus `POST /api/registry/v1/shell` in
+both consumers, the `registry_property` mirror in Inspire, registry columns on
+InspiredREV's directory, `npm run shell`, a property page with lifecycle and
+provisioning, and a daily cron. Ten things the paragraph above had not decided:
+
+- **The outbox holds change notices, not payloads.** A `shell_event` row says
+  "property X changed, now at version N"; the shell is built from current state at
+  delivery. Replay-from-zero then converges on the *current* shell for every
+  property rather than walking consumers through stale ones, three edits to one
+  hotel deliver once (`coalesce()`), and a payload can never disagree with the row
+  it describes. What is lost is a history of past shells — and that history already
+  exists, in `inn_code` and `audit_event`, where it belongs.
+
+- **One push, a cursor, and an ack — not a webhook per event and not a pull.** The
+  console POSTs everything past a subscriber's `cursor`; the consumer applies in
+  order and answers `appliedThrough`; the cursor moves to exactly that. A consumer
+  that was down is simply behind, and the next push from its cursor catches it up.
+  Pull was rejected because it puts a scheduler in every consumer; per-event
+  webhooks because they need a retry queue per event to get what a cursor gives
+  for free.
+
+- **Idempotency is the consumer's job, by `shellVersion`.** Each property's version
+  is bumped in the same transaction as its notice. A consumer applies a shell only
+  if it is newer than what it holds, so redelivery, a crashed ack, and a full
+  rewind are all harmless. That is what made "replayable from zero" cheap.
+
+- **Delivery never fails the change that caused it** (R2 seen from this side). Every
+  registry write notes the change and then tries to deliver on the spot, quietly. A
+  failure lands in `shell_subscriber.last_error` and on the property page as
+  *behind*; the property page's **Deliver now**, `npm run shell -- deliver`, and the
+  daily cron (`/api/shell/cron` — Hobby allows one a day) all resume from the cursor.
+
+- **Group membership notes, it does not deliver.** Groups are in the shell, so
+  membership changes are notices too — but a rule sync after issuance would
+  otherwise deliver twice. `groups.ts` only notes; callers deliver.
+
+- **Auth is an HMAC over a timestamped body, one secret per subscriber.**
+  `x-mhg-registry-signature: t=…,v1=…`, five-minute tolerance, the timestamp inside
+  the MAC. Not the `isk_` bearer pattern: that authenticates a caller *into* Inspire
+  for one property, and this is the registry speaking for the whole portfolio. The
+  secret is stored plaintext here because every delivery is signed with it — the
+  same tradeoff Inspire makes for `WebhookEndpoint.secret`.
+
+- **The contract is copied, not published.** `src/shell/contract.ts` is canonical,
+  dependency-free and erasable TypeScript, and both consumers carry it verbatim at
+  `src/lib/registry/contract.ts`. `test/contract-copies.test.ts` fails here if a copy
+  drifts, whenever the sibling repos sit alongside this one. A consumer refuses a
+  contract number it does not know, so a half-rolled change fails loudly rather
+  than half-applying.
+
+- **Timezone, currency and expected opening ride on the property here**, not in the
+  engine — the engine derives codes from name, place and flag, and these change
+  none of that. They are validated *before* the claim (`src/setup.ts`), because a
+  bad timezone must not be discovered after the code is burned.
+
+- **Consumers adopt by code, once.** The first shell for a property links the
+  consumer's existing unlinked row flying that code (or its predecessor). That is
+  how hotels built before the stream join it without a migration. From then on the
+  link is the registry id and the code is just a label that can change (G1).
+
+- **Inspire applies identity to a live hotel, not its clock or its money.** Code,
+  name and brand relabel a stood-up property. Timezone and currency are stamped at
+  stand-up and never synced afterwards: on a trading hotel the first moves the
+  business-date boundary and the second re-denominates folios. A difference shows on
+  Inspire's corporate page as drift; changing it is a deliberate migration there.
+  InspiredREV has no folios and takes the timezone.
+
+#### The lifecycle, as built
+
+`src/lifecycle.ts` makes the status a rule: **pipeline → active** (open),
+**pipeline → retired** (the deal died), **active → retired** (exit). Forward only;
+retired is terminal because a retired code is never reissued (G3) and reviving one
+would make a code mean two tenancies of a building. A flag change is `rebrand`, not
+a status. Every move is audited with a reason and published.
+
+| Stage | Console | Inspire | InspiredREV |
+|---|---|---|---|
+| Claim (LOI, G6) | code + market claimed, `pipeline`, published | mirror row; **Stand up** offered on `/corporate` | directory row created, no Inspire key needed |
+| Stand-up | — | `/corporate/properties/new?registry=…` builds the Property with the registry's code, name, brand, clock and money, linked by id | — |
+| Open | `active`, published | mirror status updates | `registry_status` updates |
+| Rebrand | new code, old retired, same id, published | live Property relabelled in place | directory row relabelled in place |
+| Exit | `retired`, terminal, published | mirror shows retired; nothing deleted | `registry_status` = retired |
 
 ### 1.5 One brand table
 
@@ -468,10 +555,14 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
    repo — so how many rows this step actually has is an open question worth answering before
    building anything more elaborate than the CLI.
 
-2. **Backfill codes.** Run the ladder over the current portfolio. M4/M5 cases need human
-   adjudication once; persist `marketSource` and the trace on every row.
 3. **New Property flow** here, replacing Inspire's free-text code field. `Property.code`
    stays as the column in Inspire; it now only ever receives an issued code.
+
+   **Inspire's side, 2026-10-03.** Inspire's Add Property form now sends MHG flags to
+   the registry: a registry code arrives on `/corporate` with **Stand up**, which fills
+   identity from the shell and is not typed; the free-text form remains only for houses
+   outside the MHG flags, and refuses any code the registry has issued.
+
 4. **Grants schema — PARTLY DONE 2026-09-15.** `person`, `role`, `permission`, `grant` and
    `audit_event` are built, with temporal grants and polymorphic scope. `npm run sunrise`
    creates the first account and refuses once any person exists; from People, that account
@@ -507,9 +598,22 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
 
 6. **Invert the directory sync** (§6). Highest-risk step; shadow it — populate mirrors
    and compare against live before cutover.
+
+   **Built 2026-10-03, shadow by construction.** The stream (§1.4) populates Inspire's
+   `registry_property` mirror and InspiredREV's directory. Nothing that worked stops
+   working: Inspire's `GET /api/integration/v1/property` still answers, InspiredREV's
+   pull still runs, and a consumer row only becomes registry-owned when a shell adopts
+   it. The comparison §6 asked for is on Inspire's `/corporate` page (drift column) and
+   in each consumer's `audit_log` (`registry_link` / `registry_sync` rows record every
+   before/after).
 7. **Strip the PMS screens** from Inspire's `/corporate`.
 8. **Subscribe InspiredREV to the shell stream**; retire its per-property `isk_`
    directory keys. Operational `isk_` keys — OpsCore's included — are untouched.
+
+   **Subscribed 2026-10-03.** For a registry-linked row the `isk_` pull now writes only
+   `synced_at` — it proves the key works, which operational up-flow will need, and no
+   longer writes identity. Retiring the keys outright waits for the up-flow they will
+   carry.
 
 Steps 1–5 stand on their own. Steps 7–8 are worthless without them.
 
@@ -517,6 +621,12 @@ Steps 1–5 stand on their own. Steps 7–8 are worthless without them.
 
 ## 5. Open decisions
 
+- **What changes a live Inspire hotel's timezone or currency.** The shell carries both,
+  and Inspire deliberately stamps them only at stand-up (§1.4). A real correction on a
+  trading hotel is a migration with a business-date plan, and nobody has needed one yet.
+- **Whether `expectedOpenDate` should gate anything** — today it only drives the
+  "past expected opening" banner on the property page and Inspire's default business
+  date at stand-up.
 - Region *boundaries* — deliberately deferred. §2.2 exists so this can stay open
   indefinitely, and as of 2026-09-15 drawing one is an afternoon in the Groups section.
 - **Whether a property-scope grant should hold the inn code or the internal property id.**

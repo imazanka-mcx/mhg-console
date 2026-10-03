@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "bash scripts/vercel-install.sh",
-  "buildCommand": "bash scripts/vercel-build.sh"
+  "buildCommand": "bash scripts/vercel-build.sh",
+  "crons": [
+    {
+      "path": "/api/shell/cron",
+      "schedule": "45 8 * * *"
+    }
+  ]
 }

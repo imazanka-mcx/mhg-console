@@ -1,4 +1,5 @@
 import { prisma } from '../db.ts';
+import { noteChanged } from '../shell/publish.ts';
 import { slugForGroupName } from './ids.ts';
 import {
   describeRule,
@@ -16,6 +17,11 @@ import {
  * everyone holding a grant on Midwest, without a grant being touched. That is
  * the feature — redrawing a region must not migrate grants — and it is also
  * exactly why every write below lands in the audit log with a count.
+ *
+ * Membership is also part of every member's shell (§1.3), so each change notes
+ * the affected properties on the shell stream. It only NOTES them — delivery is
+ * left to the caller, because a rule sync after issuance would otherwise deliver
+ * twice, once for the groups and once for the code.
  *
  * No `next/headers` reachable from this file, at any depth: the CLI imports it.
  */
@@ -192,6 +198,7 @@ export async function addMember(groupId: string, propertyRef: string, actorId: s
   const member = await prisma.propertyGroupMember.create({
     data: { groupId, propertyId: property.id, addedById: actorId },
   });
+  await noteChanged([property.id], 'groups');
   await prisma.auditEvent.create({
     data: {
       actorId,
@@ -209,7 +216,8 @@ export async function removeMember(groupId: string, propertyId: string, actorId:
     throw new Error(`${group.name} is rule-backed — remove it by changing the rule.`);
   }
   const property = await prisma.property.findUnique({ where: { id: propertyId } });
-  await prisma.propertyGroupMember.deleteMany({ where: { groupId, propertyId } });
+  const { count } = await prisma.propertyGroupMember.deleteMany({ where: { groupId, propertyId } });
+  if (count) await noteChanged([propertyId], 'groups');
   await prisma.auditEvent.create({
     data: {
       actorId,
@@ -268,6 +276,7 @@ export async function materializeGroup(
     });
   }
   await prisma.propertyGroup.update({ where: { id: groupId }, data: { syncedAt: new Date() } });
+  if (added.length || removed.length) await noteChanged([...added, ...removed], 'groups');
 
   if (added.length || removed.length) {
     await prisma.auditEvent.create({
