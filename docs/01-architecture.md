@@ -243,6 +243,12 @@ This app owns it. Inspire's `Brand` rows become a mirror, and `Brand.code` shoul
 `Organization.settings` "once decided" appears to be BYX; worth closing out in the same
 pass.
 
+**Served, 2026-10-03.** `GET /api/registry/v1/brands` returns `MHG_BRANDS` (retired
+flags included and marked) to any active shell subscriber that names itself in
+`x-mhg-registry-subscriber` and signs `brands:<name>` with its shell secret.
+InspiredREV mirrors it on every /admin load; Inspire can adopt it the same way when
+its `Brand` rows move to `BC`/`LX`. Read-only, and it never moves a stream cursor.
+
 ### 1.6 What the registry does not own
 
 **OpsCore is a standalone program with its own identity, not part of this platform.** It
