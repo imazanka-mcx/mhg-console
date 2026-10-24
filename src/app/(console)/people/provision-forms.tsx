@@ -1,36 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 
 import { inviteAction, type ProvisionState } from './actions.ts';
+import { GrantFields, INPUT, LABEL, type GroupOption, type RoleOption } from './grant-fields.tsx';
 
-interface RoleOption {
-  key: string;
-  name: string;
-  description: string;
-  assignableAt: readonly string[];
-  /** What the role becomes in each app (docs/01 §2.7). */
-  links: Partial<Record<'inspire' | 'inspiredrev', { role: string; also?: string[] }>>;
-}
-
-const APPS = [
-  { key: 'inspire', label: 'Inspire' },
-  { key: 'inspiredrev', label: 'InspiredREV' },
-] as const;
-
-const pretty = (k: string) => k.replace(/_/g, ' ');
-
-export interface GroupOption {
-  id: string;
-  name: string;
-  kind: string;
-  members: number;
-}
-
-const INPUT =
-  'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500';
-const LABEL = 'mb-1 block text-xs font-medium text-slate-500';
+export type { GroupOption } from './grant-fields.tsx';
 
 function Submit() {
   const { pending } = useFormStatus();
@@ -53,13 +28,6 @@ export function ProvisionForms({
   groups: GroupOption[];
 }) {
   const [state, action] = useFormState<ProvisionState, FormData>(inviteAction, {});
-  const [roleKey, setRoleKey] = useState(roles[0]?.key ?? '');
-
-  const role = roles.find((r) => r.key === roleKey);
-  const scopes = role?.assignableAt ?? ['portfolio'];
-  const [scope, setScope] = useState<string>(scopes[0] ?? 'portfolio');
-  const effectiveScope = scopes.includes(scope) ? scope : (scopes[0] ?? 'portfolio');
-
   return (
     <form action={action} className="mt-6 rounded-lg bg-white p-6 shadow-sm">
       <h2 className="text-sm font-semibold text-slate-900">Grant access</h2>
@@ -82,132 +50,7 @@ export function ProvisionForms({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className={LABEL} htmlFor="roleKey">
-            Role
-          </label>
-          <select
-            id="roleKey"
-            name="roleKey"
-            value={roleKey}
-            onChange={(e) => setRoleKey(e.target.value)}
-            className={INPUT}
-          >
-            {roles.map((r) => (
-              <option key={r.key} value={r.key}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-          {role ? <p className="mt-1 text-xs text-slate-400">{role.description}</p> : null}
-        </div>
-        <div>
-          <label className={LABEL} htmlFor="scope">
-            Scope
-          </label>
-          <select
-            id="scope"
-            name="scope"
-            value={effectiveScope}
-            onChange={(e) => setScope(e.target.value)}
-            className={INPUT}
-          >
-            {scopes.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-slate-400">
-            {scopes.length === 1
-              ? `This role is only assignable at ${scopes[0]}.`
-              : 'Narrower is safer — a grant covers everything under its scope.'}
-          </p>
-        </div>
-      </div>
-
-      {role ? (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {APPS.map((app) => {
-            const link = role.links[app.key];
-            const options = link ? [link.role, ...(link.also ?? [])] : [];
-            return (
-              <div key={`${role.key}-${app.key}`}>
-                <label className={LABEL} htmlFor={`downstream_${app.key}`}>
-                  In {app.label}
-                </label>
-                {options.length > 1 ? (
-                  <select
-                    id={`downstream_${app.key}`}
-                    name={`downstream_${app.key}`}
-                    defaultValue={options[0]}
-                    className={INPUT}
-                  >
-                    {options.map((o, i) => (
-                      <option key={o} value={o}>
-                        {pretty(o)}
-                        {i === 0 ? ' (default)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    {options[0] ? pretty(options[0]) : 'No access'}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {effectiveScope === 'property' ? (
-        <div className="mt-4">
-          <label className={LABEL} htmlFor="scopeRef">
-            Inn code
-          </label>
-          <input
-            id="scopeRef"
-            name="scopeRef"
-            maxLength={64}
-            placeholder="EVVBC"
-            className={`${INPUT} font-mono`}
-          />
-          <p className="mt-1 text-xs text-slate-400">
-            Checked against the registry — a grant pointing at nothing looks like access and confers
-            none.
-          </p>
-        </div>
-      ) : null}
-
-      {effectiveScope === 'group' ? (
-        <div className="mt-4">
-          <label className={LABEL} htmlFor="scopeRef">
-            Group
-          </label>
-          {groups.length === 0 ? (
-            <p className="rounded border border-warning-200 bg-warning-50 p-3 text-xs text-warning-800">
-              There are no groups yet, so there is nothing to grant at group scope. Draw one under
-              Groups first — a region is a set of properties, not a tier.
-            </p>
-          ) : (
-            <>
-              <select id="scopeRef" name="scopeRef" className={INPUT} defaultValue={groups[0]?.id}>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name} — {g.kind}, {g.members} propert{g.members === 1 ? 'y' : 'ies'}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-400">
-                Covers whatever is in the group today, and whatever is in it tomorrow. Redrawing the
-                group does not touch this grant — that is the point.
-              </p>
-            </>
-          )}
-        </div>
-      ) : null}
+      <GrantFields roles={roles} groups={groups} />
 
       <div className="mt-4">
         <label className={LABEL} htmlFor="reason">

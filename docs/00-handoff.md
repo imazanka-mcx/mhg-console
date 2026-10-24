@@ -117,6 +117,10 @@ Built and **verified end to end against the live Neon database**:
   `audit_event`. `npm run sunrise` creates the first account and refuses once
   any person exists; that account holds `owner` at portfolio scope and
   provisions everyone else, including other owners.
+- **Editing people** (`docs/01 §2.5`, 2026-10-24). `/people/[id]`: change a
+  grant's role, scope or per-app role in one step, edit name and email, suspend,
+  reactivate, offboard, reset a password. All of it reaches Inspire and
+  InspiredREV on the people stream.
 - **The people stream** (`docs/01 §2.8`, 2026-10-24). One account across the
   console, Inspire and InspiredREV. `person_event` outbox and a people cursor on
   each shell subscriber; `npm run people -- …` mirrors `npm run shell`.

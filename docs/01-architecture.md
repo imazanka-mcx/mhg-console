@@ -528,6 +528,13 @@ property per user.
 Temporal grants make "who had access to EVVBC on 3 March" a query rather than an
 investigation.
 
+**Built 2026-10-24** on `/people/[id]` (`src/people/manage.ts`): Grant, Transfer
+("Change" on a grant — the replacement is validated first, and if closing the old one is
+refused the new one is closed again), Suspend, Reactivate, Offboard, plus profile edits
+and a one-time password reset. Each change goes out on the people stream (§2.8). None of
+them can remove the last account able to grant access, and nobody can suspend or
+offboard themselves. Elevate is still open.
+
 ### 2.6 The missing middle tier
 
 The second half of the regional problem, independent of scopes.

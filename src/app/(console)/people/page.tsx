@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { prisma } from '../../../db.ts';
 import { permissionsAt } from '../../../auth/access.ts';
 import { currentActor } from '../../../auth/actor.ts';
@@ -55,7 +57,9 @@ export default async function PeoplePage() {
             <div key={p.id} className="rounded-lg bg-white p-5 shadow-sm">
               <div className="flex items-baseline justify-between">
                 <div>
-                  <span className="text-sm font-medium text-slate-900">{p.name}</span>
+                  <Link href={`/people/${p.id}`} className="text-sm font-medium text-slate-900 hover:text-brand-600 hover:underline">
+                    {p.name}
+                  </Link>
                   <span className="ml-2 text-sm text-slate-500">{p.email}</span>
                 </div>
                 <span
