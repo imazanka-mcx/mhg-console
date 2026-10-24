@@ -5,7 +5,7 @@ import { permissionsAt } from '../../../auth/access.ts';
 import { currentActor } from '../../../auth/actor.ts';
 import { listOrganizations } from '../../../orgs/orgs.ts';
 import { ORG_KIND_LABELS, type OrgKind } from '../../../orgs/rules.ts';
-import { CreateOrgForm } from './org-forms.tsx';
+import { NewOrgButton } from './org-forms.tsx';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,14 +26,17 @@ export default async function OrganizationsPage() {
 
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold text-slate-900">Organizations</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Ownership groups and management companies. One row each, however many hotels they hold — a
-        property points at them through dated assignments, so a sale or a change of manager is a new
-        row and never an edit.
-      </p>
-
-      {canManage ? <CreateOrgForm /> : null}
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Organizations</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Ownership groups and management companies. One row each, however many hotels they hold — a
+            property points at them through dated assignments, so a sale or a change of manager is a new
+            row and never an edit.
+          </p>
+        </div>
+        {canManage ? <NewOrgButton /> : null}
+      </div>
 
       {live.length === 0 ? (
         <div className="mt-8 rounded-lg border border-dashed border-slate-300 bg-white p-12 text-center">

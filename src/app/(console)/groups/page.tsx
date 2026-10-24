@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { permissionsAt } from '../../../auth/access.ts';
 import { currentActor } from '../../../auth/actor.ts';
 import { GROUP_KIND_LABELS, listGroups, type GroupKind } from '../../../groups/groups.ts';
-import { CreateGroupForm } from './create-group-form.tsx';
+import { NewGroupButton } from './create-group-form.tsx';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,14 +26,17 @@ export default async function GroupsPage() {
 
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold text-slate-900">Groups</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        The above-property axis, held as membership rather than schema. Scope stays{' '}
-        <span className="font-mono text-xs">portfolio · group · property</span> permanently, so a
-        new way of slicing the portfolio is a row here and never a migration.
-      </p>
-
-      {canManage ? <CreateGroupForm /> : null}
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Groups</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            The above-property axis, held as membership rather than schema. Scope stays{' '}
+            <span className="font-mono text-xs">portfolio · group · property</span> permanently, so a
+            new way of slicing the portfolio is a row here and never a migration.
+          </p>
+        </div>
+        {canManage ? <NewGroupButton /> : null}
+      </div>
 
       {live.length === 0 ? (
         <div className="mt-8 rounded-lg border border-dashed border-slate-300 bg-white p-12 text-center">

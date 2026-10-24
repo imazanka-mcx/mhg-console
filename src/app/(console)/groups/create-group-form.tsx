@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 
 import { createGroupAction, type GroupState } from './actions.ts';
+import { ModalButton, ModalHeader, SECONDARY } from '../modal-button.tsx';
 
 const INPUT =
   'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500';
@@ -25,10 +26,13 @@ const RULE_FIELDS = [
   { key: 'status', label: 'Status', placeholder: 'active, pipeline' },
 ] as const;
 
-function Buttons({ mode }: { mode: string }) {
+function Buttons({ mode, onClose }: { mode: string; onClose: () => void }) {
   const { pending } = useFormStatus();
   return (
-    <div className="mt-5 flex items-center gap-3">
+    <div className="mt-6 flex items-center justify-end gap-3">
+      <button type="button" onClick={onClose} className={SECONDARY}>
+        Cancel
+      </button>
       {mode === 'rule' ? (
         <button
           type="submit"
@@ -53,20 +57,42 @@ function Buttons({ mode }: { mode: string }) {
   );
 }
 
-export function CreateGroupForm() {
+/** "+ New group" — the create form in a dialog. */
+export function NewGroupButton() {
+  return (
+    <ModalButton label="+ New group" labelledBy="new-group-title">
+      {(close) => <CreateGroupForm onClose={close} />}
+    </ModalButton>
+  );
+}
+
+function CreateGroupForm({ onClose }: { onClose: () => void }) {
   const [state, action] = useFormState<GroupState, FormData>(createGroupAction, {});
   const [kind, setKind] = useState<string>('region');
   const [mode, setMode] = useState<string>('manual');
 
   const kindHint = KINDS.find((k) => k.key === kind)?.hint;
 
+  if (state.ok) {
+    return (
+      <div className="p-6">
+        <ModalHeader id="new-group-title" title="New group" onClose={onClose} />
+        <p className="mt-4 text-sm text-success-700">{state.ok}</p>
+        <div className="mt-6 flex justify-end">
+          <button type="button" onClick={onClose} className={SECONDARY}>
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <form action={action} className="mt-6 rounded-lg bg-white p-6 shadow-sm">
-      <h2 className="text-sm font-semibold text-slate-900">New group</h2>
-      <p className="mt-1 text-xs text-slate-500">
+    <form action={action} className="max-h-[85vh] overflow-y-auto p-6">
+      <ModalHeader id="new-group-title" title="New group" onClose={onClose}>
         A group is a set of properties that can be granted on. The id is minted from the name once
         and never changes, because grants point at it.
-      </p>
+      </ModalHeader>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
@@ -166,7 +192,6 @@ export function CreateGroupForm() {
       ) : null}
 
       {state.error ? <p className="mt-4 text-sm text-danger-700">{state.error}</p> : null}
-      {state.ok ? <p className="mt-4 text-sm text-success-700">{state.ok}</p> : null}
 
       {state.preview ? (
         <div className="mt-4 rounded border border-slate-200 bg-white p-4">
@@ -191,7 +216,7 @@ export function CreateGroupForm() {
         </div>
       ) : null}
 
-      <Buttons mode={mode} />
+      <Buttons mode={mode} onClose={onClose} />
     </form>
   );
 }

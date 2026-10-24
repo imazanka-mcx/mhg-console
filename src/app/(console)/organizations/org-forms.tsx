@@ -11,6 +11,7 @@ import {
   updateOrgAction,
   type OrgState,
 } from './actions.ts';
+import { ModalButton, ModalHeader, SECONDARY } from '../modal-button.tsx';
 
 const INPUT =
   'w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500';
@@ -102,33 +103,61 @@ function DetailFields({ kind, values }: { kind: string; values?: OrgDetails }) {
   );
 }
 
-export function CreateOrgForm() {
+/** "+ New organization" — the create form in a dialog. */
+export function NewOrgButton() {
+  return (
+    <ModalButton label="+ New organization" labelledBy="new-org-title">
+      {(close) => <CreateOrgForm onClose={close} />}
+    </ModalButton>
+  );
+}
+
+function CreateOrgForm({ onClose }: { onClose: () => void }) {
   const [state, action] = useFormState<OrgState, FormData>(createOrgAction, {});
   const [kind, setKind] = useState('ownership');
+  const done = Boolean(state.ok);
   return (
-    <form action={action} className="mt-6 rounded-lg bg-white p-5 shadow-sm">
-      <h2 className="text-sm font-semibold text-slate-900">New organization</h2>
-      <div className="mt-3 flex gap-4 text-sm text-slate-700">
-        {[
-          { key: 'ownership', label: 'Ownership group', hint: 'Who owns the building.' },
-          { key: 'management', label: 'Management company', hint: 'A registered third party that runs the hotel.' },
-        ].map((k) => (
-          <label key={k.key} className="flex items-start gap-2">
-            <input type="radio" name="kind" value={k.key} checked={kind === k.key} onChange={() => setKind(k.key)} className="mt-1" />
-            <span>
-              {k.label}
-              <span className="block text-xs text-slate-400">{k.hint}</span>
-            </span>
-          </label>
-        ))}
+    <form action={action} className="max-h-[85vh] overflow-y-auto p-6">
+      <ModalHeader id="new-org-title" title="New organization" onClose={onClose}>
+        One row per ownership group or management company, however many hotels it holds.
+      </ModalHeader>
+      {done ? null : (
+        <>
+          <div className="mt-4 flex gap-4 text-sm text-slate-700">
+            {[
+              { key: 'ownership', label: 'Ownership group', hint: 'Who owns the building.' },
+              { key: 'management', label: 'Management company', hint: 'A registered third party that runs the hotel.' },
+            ].map((k) => (
+              <label key={k.key} className="flex items-start gap-2">
+                <input type="radio" name="kind" value={k.key} checked={kind === k.key} onChange={() => setKind(k.key)} className="mt-1" />
+                <span>
+                  {k.label}
+                  <span className="block text-xs text-slate-400">{k.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-4">
+            <DetailFields kind={kind} />
+          </div>
+        </>
+      )}
+      {state.error ? <p className="mt-4 text-sm text-danger-700">{state.error}</p> : null}
+      {state.ok ? <p className="mt-4 text-sm text-success-700">{state.ok}</p> : null}
+      <div className="mt-6 flex justify-end gap-3">
+        {done ? (
+          <button type="button" onClick={onClose} className={SECONDARY}>
+            Done
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={onClose} className={SECONDARY}>
+              Cancel
+            </button>
+            <Submit>Add organization</Submit>
+          </>
+        )}
       </div>
-      <div className="mt-4">
-        <DetailFields kind={kind} />
-      </div>
-      <div className="mt-4">
-        <Submit>Add organization</Submit>
-      </div>
-      <Result state={state} />
     </form>
   );
 }
