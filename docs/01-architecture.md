@@ -32,7 +32,7 @@ Read before the design, because four of these change it.
 | **G1 is already safe.** `Property.id` is a cuid; `code` is a separate field under `@@unique([orgId, code])`. | `mhotels-inspire/prisma/schema.prisma:89` | Rebrands (G2) are structurally survivable today. |
 | **The property code field is free text.** "2–20 characters: letters, numbers, - or _", placeholder `MHOR`. | `corporate/properties/new/page.tsx` | Nothing enforces MHG-IC. The standard is a document the form has never heard of. |
 | **The IC generator is already a library with a registry port.** `Registry` interface, `MemoryRegistry` + `FirestoreRegistry`, `deriveCode` vs. atomic `issueCode`, 70 tests. | `mhg-icgenerator/src/types.ts` | Absorbing it is **not a rewrite**. It is one new `PrismaRegistry implements Registry`. |
-| **The brand table narrowed to MHG flags only** — `BC` BYX Collection, `LX` BYX Luxury, chain `MAZ`. Franchised houses under someone else's flag get no inn code. | `mhg-icgenerator/src/config/brands.ts` | Collapses the brand-model duplicate (§1.5). |
+| **The brand table narrowed to MHG flags only** — `BC` BYX Collection, `LX` BYX Luxury, chain `MHG`. Franchised houses under someone else's flag get no inn code. | `mhg-icgenerator/src/config/brands.ts` | Collapses the brand-model duplicate (§1.5). |
 | **Identity currently flows *up*, pulled per property.** InspiredREV's directory row is filled by calling `GET /api/integration/v1/property` with an `isk_` key issued by that property's own Inspire. | `mhg-inspiredrev/docs/01 §9` | Direct conflict with a registry plane. Resolved in §6 — and it has a hard break, §6.2. |
 | **InspiredREV already has scoped grants.** `Scope = chain \| brand \| property`, `AccessGrant` join table, multi-grant per user. | `mhg-inspiredrev/prisma/schema.prisma:169` | Half of §2 is built. In the wrong repo, with the wrong middle tier. |
 | **Inspire has no middle tier at all.** `OrgRole = corporate_admin \| corporate_viewer`, and `roleAt()` returns `"admin"` at *every* property for corporate_admin. | `mhotels-inspire/src/lib/rbac.ts:28` | A Regional DOO can only be read-only-everywhere or full-admin-everywhere. See §2.6. |
@@ -120,7 +120,7 @@ drifting into being a PMS.
   "predecessorCode": "",
   "name": "BYX Collection Evansville East",
   "brandCode": "BC",
-  "chainCode": "MAZ",
+  "chainCode": "MHG",
   "marketCode": "EVV",
   "marketSource": "airport",           // the rule that produced it (M7 audit)
   "city": "Evansville", "state": "IN", "submarket": "",
@@ -238,7 +238,7 @@ a status. Every move is audited with a reason and published.
 
 ### 1.5 One brand table
 
-`@mcx/inn-code`'s `BrandEntry` (`BC`/`LX`, chain `MAZ`) and Inspire's `Brand` model
+`@mcx/inn-code`'s `BrandEntry` (`BC`/`LX`, chain `MHG`) and Inspire's `Brand` model
 (`BrandTier`, `endorsement`, the "[Name] by [House]" convention, placeholder code
 `FLAG`) are the same concept modeled twice. Now that the IC table is MHG-flags-only,
 there is no tension to resolve — just a duplicate.
@@ -253,6 +253,13 @@ flags included and marked) to any active shell subscriber that names itself in
 `x-mhg-registry-subscriber` and signs `brands:<name>` with its shell secret.
 InspiredREV mirrors it on every /admin load; Inspire can adopt it the same way when
 its `Brand` rows move to `BC`/`LX`. Read-only, and it never moves a stream cursor.
+
+**Chain code MAZ → MHG, 2026-10-24.** `@mcx/inn-code` v1.2.0 files both flags under
+chain `MHG`. The chain is not part of the inn code, so nothing is reissued; migration
+`20261024210000_chain_code_mhg` relabels `property`, the `inn_code` ledger and any
+rule group sliced by chain, and bumps each property's shell with reason `backfill` so
+both subscribers pick up `MHG` on the next delivery. InspiredREV's brand mirror
+follows on its next pull.
 
 ### 1.6 What the registry does not own
 

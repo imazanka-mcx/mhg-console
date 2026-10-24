@@ -28,7 +28,7 @@ const shell = (over: Partial<Shell> = {}): Shell => ({
   name: 'BYX Collection Alquitranes Riverfront',
   brandCode: 'BC',
   brandName: 'BYX Collection',
-  chainCode: 'MAZ',
+  chainCode: 'MHG',
   marketCode: 'ALQ',
   marketSource: 'letters',
   city: 'Alquitranes',

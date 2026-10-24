@@ -63,9 +63,9 @@ expect_violation() {
 
 seed_property() { # id, code, market, submarket
   $PSQL -q -c "INSERT INTO property (id, code, name, brand_code, brand_name, chain_code, market_code, city, state, submarket, status, effective_date, prop_code, updated_at)
-               VALUES ('$1','$2','BYX Collection Evansville','BC','BYX Collection','MAZ','$3','Evansville','IN','$4','active','2026-09-15','$2', now());" >/dev/null
+               VALUES ('$1','$2','BYX Collection Evansville','BC','BYX Collection','MHG','$3','Evansville','IN','$4','active','2026-09-15','$2', now());" >/dev/null
   $PSQL -q -c "INSERT INTO inn_code (code, property_id, name, brand_code, brand_name, chain_code, market_code, city, state, submarket, status, effective_date, prop_code)
-               VALUES ('$2','$1','BYX Collection Evansville','BC','BYX Collection','MAZ','$3','Evansville','IN','$4','active','2026-09-15','$2');" >/dev/null
+               VALUES ('$2','$1','BYX Collection Evansville','BC','BYX Collection','MHG','$3','Evansville','IN','$4','active','2026-09-15','$2');" >/dev/null
 }
 
 # Rebuild from the REAL migration, not a copy of it. If Prisma's generated
@@ -85,14 +85,14 @@ echo "G3/G8 — a code is claimed exactly once, forever"
 seed_property prop-1 EVVBC EVV ''
 expect_violation "a second property cannot take an issued code" \
   "INSERT INTO inn_code (code, property_id, name, brand_code, brand_name, chain_code, market_code, city, state, status, effective_date, prop_code)
-   VALUES ('EVVBC','prop-1','Other','BC','BYX Collection','MAZ','EVV','Evansville','IN','active','2026-09-15','EVVBC');" \
+   VALUES ('EVVBC','prop-1','Other','BC','BYX Collection','MHG','EVV','Evansville','IN','active','2026-09-15','EVVBC');" \
   "duplicate key value violates unique constraint"
 
 expect_ok "retiring a code leaves the row in place" \
   "UPDATE inn_code SET status = 'retired' WHERE code = 'EVVBC';"
 expect_violation "a RETIRED code is still claimed — G3 fires against history" \
   "INSERT INTO inn_code (code, property_id, name, brand_code, brand_name, chain_code, market_code, city, state, status, effective_date, prop_code)
-   VALUES ('EVVBC','prop-1','Reissue','BC','BYX Collection','MAZ','EVV','Evansville','IN','active','2026-09-15','EVVBC');" \
+   VALUES ('EVVBC','prop-1','Reissue','BC','BYX Collection','MHG','EVV','Evansville','IN','active','2026-09-15','EVVBC');" \
   "duplicate key value violates unique constraint"
 $PSQL -q -c "UPDATE inn_code SET status='active' WHERE code='EVVBC';" >/dev/null
 
@@ -121,7 +121,7 @@ expect_violation "a second code cannot own the same submarket (M6)" \
 echo
 echo "G1/G2 — a rebrand moves the code, never the property id"
 $PSQL -q -c "INSERT INTO inn_code (code, property_id, name, brand_code, brand_name, chain_code, market_code, city, state, status, predecessor_code, effective_date, prop_code)
-             VALUES ('EVVLX','prop-1','BYX Luxury Evansville','LX','BYX Luxury','MAZ','EVV','Evansville','IN','active','EVVBC','2026-09-15','EVVLX');" >/dev/null
+             VALUES ('EVVLX','prop-1','BYX Luxury Evansville','LX','BYX Luxury','MHG','EVV','Evansville','IN','active','EVVBC','2026-09-15','EVVLX');" >/dev/null
 $PSQL -q -c "UPDATE property SET code='EVVLX', brand_code='LX', brand_name='BYX Luxury', predecessor_code='EVVBC', prop_code='EVVLX', updated_at=now() WHERE id='prop-1';" >/dev/null
 $PSQL -q -c "UPDATE inn_code SET status='retired' WHERE code='EVVBC';" >/dev/null
 
@@ -143,7 +143,7 @@ echo "G8 — the race two writers actually run"
 # Exactly one may win, and the loser must be refused by the database rather than
 # by anything the application remembered to check.
 $PSQL -q -c "INSERT INTO property (id, code, name, brand_code, brand_name, chain_code, market_code, city, state, status, effective_date, prop_code, updated_at)
-             VALUES ('prop-2','TMPAA','Race A','BC','BYX Collection','MAZ','IND','Indianapolis','IN','active','2026-09-15','TMPAA', now());" >/dev/null
+             VALUES ('prop-2','TMPAA','Race A','BC','BYX Collection','MHG','IND','Indianapolis','IN','active','2026-09-15','TMPAA', now());" >/dev/null
 #
 # Both sessions are launched together and each sleeps INSIDE its transaction
 # before inserting, so the two inserts genuinely overlap. Whichever arrives
@@ -152,7 +152,7 @@ $PSQL -q -c "INSERT INTO property (id, code, name, brand_code, brand_name, chain
 # already-committed row is in the way.)
 race_sql="BEGIN; SELECT pg_sleep(0.5);
 INSERT INTO inn_code (code, property_id, name, brand_code, brand_name, chain_code, market_code, city, state, status, effective_date, prop_code)
-VALUES ('INDBC','prop-2','Racer','BC','BYX Collection','MAZ','IND','Indianapolis','IN','active','2026-09-15','INDBC'); COMMIT;"
+VALUES ('INDBC','prop-2','Racer','BC','BYX Collection','MHG','IND','Indianapolis','IN','active','2026-09-15','INDBC'); COMMIT;"
 $PSQL -v ON_ERROR_STOP=1 -q -c "$race_sql" >/tmp/race-a.log 2>&1 &
 a_pid=$!
 $PSQL -v ON_ERROR_STOP=1 -q -c "$race_sql" >/tmp/race-b.log 2>&1 &

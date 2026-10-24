@@ -131,7 +131,7 @@ describe('the claim is what guarantees uniqueness (G8)', () => {
     name: 'BYX Collection Evansville',
     brandCode: 'BC',
     brandName: 'BYX Collection',
-    chainCode: 'MAZ',
+    chainCode: 'MHG',
     marketCode: 'EVV',
     city: 'Evansville',
     state: 'IN',
