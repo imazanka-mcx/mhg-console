@@ -5,6 +5,14 @@ import { z } from 'zod';
 
 import { requirePermission } from '../../../../auth/actor.ts';
 import { changeStatus, updateSetup } from '../../../../issuance.ts';
+import {
+  assignManagement,
+  assignOwnership,
+  endAssignment,
+  updateAsset,
+  updateManagementTerms,
+  updateOwnershipTerms,
+} from '../../../../orgs/orgs.ts';
 import { deliverAll } from '../../../../shell/publish.ts';
 
 /**
@@ -99,4 +107,158 @@ export async function deliverNowAction(
   return failed.length
     ? { error: failed.map((r) => `${r.subscriber}: ${r.error ?? 'failed'}`).join(' · ') }
     : { ok: `Delivered. ${results.map((r) => `${r.subscriber} at ${r.cursor}`).join(', ')}.` };
+}
+
+// ─────────────────────────── ownership and control (§1.7) ─────────────────
+// Console-only: these are audited but never published, because the shell
+// does not carry ownership, management or the asset (yet).
+
+const str = (form: FormData, k: string) => String(form.get(k) ?? '');
+
+async function orgActorId(): Promise<string | null> {
+  try {
+    return (await requirePermission('org.manage')).id;
+  } catch {
+    return null;
+  }
+}
+
+const ORG_DENIED: PropertyActionState = { error: 'You are not permitted to assign ownership or management.' };
+
+function done(propertyId: string, ok: string): PropertyActionState {
+  revalidatePath(`/portfolio/${propertyId}`);
+  revalidatePath('/organizations');
+  return { ok };
+}
+
+function failed(err: unknown): PropertyActionState {
+  return { error: err instanceof Error ? err.message : String(err) };
+}
+
+export async function assignOwnershipAction(_prev: PropertyActionState, form: FormData): Promise<PropertyActionState> {
+  const actorId = await orgActorId();
+  if (!actorId) return ORG_DENIED;
+  const propertyId = str(form, 'propertyId');
+  try {
+    await assignOwnership(
+      propertyId,
+      {
+        organizationId: str(form, 'organizationId'),
+        effectiveFrom: str(form, 'effectiveFrom'),
+        titleEntity: str(form, 'titleEntity'),
+        titleEntityState: str(form, 'titleEntityState'),
+        licenseEffectiveDate: str(form, 'licenseEffectiveDate'),
+        licenseExpiryDate: str(form, 'licenseExpiryDate'),
+        reason: str(form, 'reason'),
+      },
+      actorId,
+    );
+    return done(propertyId, 'Ownership assigned.');
+  } catch (err) {
+    return failed(err);
+  }
+}
+
+export async function assignManagementAction(_prev: PropertyActionState, form: FormData): Promise<PropertyActionState> {
+  const actorId = await orgActorId();
+  if (!actorId) return ORG_DENIED;
+  const propertyId = str(form, 'propertyId');
+  try {
+    await assignManagement(
+      propertyId,
+      {
+        organizationId: str(form, 'organizationId'),
+        effectiveFrom: str(form, 'effectiveFrom'),
+        agreementExpiryDate: str(form, 'agreementExpiryDate'),
+        terminationNoticeDays: str(form, 'terminationNoticeDays'),
+        reason: str(form, 'reason'),
+      },
+      actorId,
+    );
+    return done(propertyId, 'Management company assigned.');
+  } catch (err) {
+    return failed(err);
+  }
+}
+
+export async function ownershipTermsAction(_prev: PropertyActionState, form: FormData): Promise<PropertyActionState> {
+  const actorId = await orgActorId();
+  if (!actorId) return ORG_DENIED;
+  const propertyId = str(form, 'propertyId');
+  try {
+    await updateOwnershipTerms(
+      propertyId,
+      {
+        titleEntity: str(form, 'titleEntity'),
+        titleEntityState: str(form, 'titleEntityState'),
+        licenseEffectiveDate: str(form, 'licenseEffectiveDate'),
+        licenseExpiryDate: str(form, 'licenseExpiryDate'),
+      },
+      actorId,
+    );
+    return done(propertyId, 'Saved.');
+  } catch (err) {
+    return failed(err);
+  }
+}
+
+export async function managementTermsAction(_prev: PropertyActionState, form: FormData): Promise<PropertyActionState> {
+  const actorId = await orgActorId();
+  if (!actorId) return ORG_DENIED;
+  const propertyId = str(form, 'propertyId');
+  try {
+    await updateManagementTerms(
+      propertyId,
+      { agreementExpiryDate: str(form, 'agreementExpiryDate'), terminationNoticeDays: str(form, 'terminationNoticeDays') },
+      actorId,
+    );
+    return done(propertyId, 'Saved.');
+  } catch (err) {
+    return failed(err);
+  }
+}
+
+export async function endAssignmentAction(_prev: PropertyActionState, form: FormData): Promise<PropertyActionState> {
+  const actorId = await orgActorId();
+  if (!actorId) return ORG_DENIED;
+  const propertyId = str(form, 'propertyId');
+  const which = str(form, 'which') === 'ownership' ? 'ownership' : 'management';
+  try {
+    await endAssignment(propertyId, which, str(form, 'effectiveTo'), str(form, 'reason'), actorId);
+    return done(propertyId, `${which === 'ownership' ? 'Ownership' : 'Management'} ended.`);
+  } catch (err) {
+    return failed(err);
+  }
+}
+
+const ASSET_FIELDS = [
+  'streetAddress',
+  'postalCode',
+  'keyCount',
+  'serviceLevel',
+  'yearOpened',
+  'yearRenovated',
+  'pipStatus',
+  'pipDueDate',
+  'qaLastDate',
+  'qaLastResult',
+] as const;
+
+export async function updateAssetAction(_prev: PropertyActionState, form: FormData): Promise<PropertyActionState> {
+  let actor;
+  try {
+    actor = await requirePermission('property.issue');
+  } catch {
+    return { error: 'You are not permitted to edit properties.' };
+  }
+  const propertyId = str(form, 'propertyId');
+  const input: Partial<Record<(typeof ASSET_FIELDS)[number], string>> = {};
+  for (const k of ASSET_FIELDS) if (form.has(k)) input[k] = str(form, k);
+  try {
+    await updateAsset(propertyId, input, actor.id);
+    revalidatePath(`/portfolio/${propertyId}`);
+    return { ok: 'Saved.' };
+  } catch (err) {
+    return failed(err);
+  }
 }

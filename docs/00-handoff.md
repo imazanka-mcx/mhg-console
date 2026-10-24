@@ -149,6 +149,21 @@ Built and **verified end to end against the live Neon database**:
   generated clients, no subscribers registered. `DEPLOY.md §8` is the exact
   order — Mac migrations, consumers deploy first, subscribe, backfill, deliver.
 
+- **Ownership and control** (`docs/01 §1.7`, 2026-10-24). `/organizations`
+  for ownership groups and management companies with their principals; on
+  `/portfolio/[id]` an Ownership & control panel (dated owner and manager
+  assignments, title entity, licence and agreement terms, the management rule
+  shown pass/fail) and The asset panel (address, keys, service level, years,
+  PIP, QA). Opening a hotel is refused until it has an owner and a registered
+  third-party manager sharing no principal with it.
+
+  **Authored on Linux; not yet live.** Hand-written migration
+  (`*_ownership_control`), stale client, new permissions unseeded. On the Mac:
+  `npx prisma migrate dev && npm run db:seed && npm run typecheck`. Production
+  migrates on deploy, but **seeding does not** — run `npm run db:seed` against
+  the `production` branch right after the deploy, or nobody holds `org.manage`
+  and every pipeline hotel is unopenable until someone does.
+
 **Open, in priority order:**
 
 1. **Inspire's role migration** (`§4 step 5`). Its `Role` enum, `RANK` and

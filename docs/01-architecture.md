@@ -7,6 +7,11 @@ constraints on what this app owns, don't have to be re-derived every session.
 Depends on: MHG-IC v1.0 (Inn Code Standard) · `mhg-icgenerator` · `mhotels-inspire` ·
 `mhg-inspiredrev`
 
+> **v0.6 (2026-10-24):** §1.7 added and built — ownership and control. Organizations
+> (ownership groups, management companies) with principals, dated ownership and
+> management assignments per property, the management rule as a gate on opening, and
+> the console-only asset and compliance fields. Closes the §5 question of whether this
+> app owns org structure: it does.
 > **v0.5 (2026-10-03):** §1.4 built — the shell stream, both receivers, and the
 > lifecycle as a rule. What building it settled is written up under §1.4.
 > **v0.4:** §1.6 cut back — OpsCore is a standalone program that offers integrations,
@@ -270,6 +275,77 @@ The same applies to every other system MHG does not solely own — franchisor sy
 (OnQ, Lightstay, which will never federate anyway), accounting, procurement. Out of
 scope; the inn code is the only thing that travels.
 
+### 1.7 Ownership and control
+
+Who owns the building and who runs it. This passes the discipline test in §1.1 — it
+changes what the portfolio does, not how one guest's stay goes — and it was the open
+question in §5 of whether this app owns org structure or mirrors it. **It owns it.**
+There is nothing upstream to mirror: no other MHG system records who owns a hotel.
+
+**The rule.** Every MHG hotel is run by a **registered third-party management company**.
+It may not be operated by a principal of its ownership group. Opening a hotel
+(`pipeline → active`) is refused until that holds. Abandon and exit are never gated.
+
+**The shape.**
+
+- `organization` — one row per ownership group or management company, however many
+  hotels it holds. `kind` is `ownership | management` and is fixed at creation: an
+  owner that became a manager would silently change what every assignment on it
+  means. The id is a slug minted once (`org_riverside_capital`), same discipline as a
+  group id. A management company must carry `registeredState` and
+  `registrationNumber` — that is what "registered third party" means in data.
+- `organization_principal` — the people who own or control an organization, compared
+  across organizations on **lowercased email**. Deliberately not `person`: principals
+  are not console users, and putting them in `person` would put logins where only
+  names belong. Removed principals keep their row (`removedAt`) so past compliance can
+  be explained.
+- `property_ownership` and `property_management` — **dated assignments**, the same
+  temporal shape as a grant (§2.5). One live row per property (`effectiveTo` null).
+  Assigning a new owner or manager closes the live row on the new row's start date, in
+  one transaction. A sale is a new row, never an edit, so "who managed EVVHX on 3 March"
+  is a query. Ownership carries the **title-holding entity** (the single-asset LLC on
+  the deed, which is usually not the group) and the **MHG licence** term. Management
+  carries the **management agreement** expiry and termination notice, because the
+  agreement and the assignment begin and end together.
+
+**Where the rule is enforced** — `src/orgs/rules.ts` (pure, unit-tested) decides;
+`src/orgs/orgs.ts` refuses:
+
+1. **Assigning a manager** is checked against the live owner, so ownership comes first.
+2. **Assigning a new owner** re-checks the live manager — a sale to the manager's own
+   principals must not slip in through the ownership door.
+3. **Adding a principal** re-checks every live pairing that organization is part of.
+4. **Archiving** an organization that still holds an assignment is refused.
+5. **Ending** an assignment with no successor is refused on an active hotel: an active
+   MHG hotel always has an owner and a registered manager, so the only way to change
+   either is to assign the next one.
+6. **Opening** — `changeStatus` calls `assertReadyToOpen` on the `open` transition, so
+   the property page and `npm run issue -- status` share one gate.
+
+Blocks are the rule (no owner, no manager, manager unregistered or archived, owner
+managing itself, a shared principal by email). Warnings are what data cannot settle —
+the same name on both sides under different emails, a missing address or key count —
+and show on the page without refusing anything. A rule with no principals recorded
+passes and proves nothing; the Organizations section says so where it lists them.
+
+**The asset**, on `property`: street address, postal code, **key count**, service level,
+year opened and last renovated, and the brand compliance fields Oversight will read
+(PIP status and due date, last QA date and result). Room types, inventory and
+meeting space stay in Inspire.
+
+**Not in the shell.** None of this bumps `shellVersion` or publishes; every write is
+audited. Adding a field to the shell is cheaper than taking one out, so ownership and
+management flow down (R1) only when a consumer asks for them.
+
+**Left out on purpose.** Fees, P&L, lender and loan terms, and tax ids. They would make
+the console a more sensitive system than it needs to be; a lender, if ever wanted, is a
+name. **Key people** (GM, DOS, DOF) are not built — see §5.
+
+**Permissions.** `org.read` (owner, registrar, viewer) and `org.manage` (owner,
+registrar). Assigning ownership and management takes `org.manage`, not
+`property.issue`, because it decides whether a hotel may open. The asset fields take
+`property.issue`, like the stand-up details.
+
 ---
 
 ## 2. Identity, access, and the regional problem
@@ -469,6 +545,8 @@ corporate-flavored PMS admin. This app has five sections instead:
    provisioning health. New Property (the generator) lives here.
 2. **Groups** — regions, brands, entities, ad-hoc. Membership editing, rule preview,
    "who does this change affect."
+   **Organizations** (§1.7) — ownership groups and management companies, their
+   principals, and the hotels each holds. Built 2026-10-24 as its own nav entry.
 3. **People** — persons, grants, role catalog, lifecycle verbs, access review.
 4. **Oversight** — §3.1.
 5. **Standards** — brand table, market and submarket claims with their `marketSource`,
@@ -492,6 +570,9 @@ Not a report dump — a list that should ideally be empty:
 - persons with zero active grants; grants expiring in 30 days
 - elevations active right now
 - pipeline properties past expected-open with no status change
+- active properties whose owner–manager pairing now fails the management rule (§1.7)
+- MHG licences and management agreements expiring within 12 months; PIPs past due;
+  failed brand QA
 - roles whose published version diverges from what grants pin to
 - `pastDue120` counts — the one permitted receivable-derived signal, at the permitted
   resolution
@@ -646,7 +727,13 @@ Steps 1–5 stand on their own. Steps 7–8 are worthless without them.
 - Revocation lag target for financial roles (drives token TTL).
 - Cross-app auth: whether Inspire and InspiredREV authenticate against a mirror of
   `person`/`grant` (R2 says yes) and what the refresh cadence is.
-- Whether this app owns org structure (entities, ownership cos) or mirrors it.
+- ~~Whether this app owns org structure (entities, ownership cos) or mirrors it.~~
+  Owns it — §1.7, 2026-10-24.
+- **Key people at a property** (GM, DOS, DOF, owner's rep). As grants they would mean
+  console or downstream access, which a GM title does not imply; as contact rows they
+  duplicate People. Decide which before building either.
+- **Whether ownership and management flow down in the shell** (R1). Console-only for
+  now (§1.7); revisit when a consumer asks.
 - The BYX house name in `Organization.settings`, still parked by
   `mhotels-inspire/docs/18`.
 

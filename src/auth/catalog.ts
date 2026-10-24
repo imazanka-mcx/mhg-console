@@ -49,6 +49,13 @@ export const PERMISSIONS: PermissionSeed[] = [
   { key: 'group.read', name: 'View groups and their membership', scopeMax: 'portfolio', ownedBy: 'console' },
   { key: 'group.manage', name: 'Create groups and edit membership', scopeMax: 'portfolio', ownedBy: 'console' },
 
+  // ── ownership and control ───────────────────────────────────────────────
+  // Who owns and who runs each hotel (§1.7). Reading it is part of seeing the
+  // portfolio; changing it decides whether a hotel may open, so it is its own
+  // authority rather than riding on property.issue.
+  { key: 'org.read', name: 'View ownership and management', scopeMax: 'portfolio', ownedBy: 'console' },
+  { key: 'org.manage', name: 'Maintain organizations and assign ownership and management', scopeMax: 'portfolio', ownedBy: 'console' },
+
   // ── standards ───────────────────────────────────────────────────────────
   { key: 'standards.manage', name: 'Edit the brand table and market claims', scopeMax: 'portfolio', ownedBy: 'console' },
 
@@ -78,6 +85,8 @@ export const ROLES: RoleSeed[] = [
       'property.status',
       'group.read',
       'group.manage',
+      'org.read',
+      'org.manage',
       'people.read',
       'people.manage',
       'standards.manage',
@@ -97,6 +106,8 @@ export const ROLES: RoleSeed[] = [
       'property.status',
       'group.read',
       'group.manage',
+      'org.read',
+      'org.manage',
       'standards.manage',
     ],
   },
@@ -107,7 +118,7 @@ export const ROLES: RoleSeed[] = [
       'Reads the portfolio. Grantable narrowly, which is what makes a regional or single-property seat possible without inventing a role per tier.',
     version: 1,
     assignableAt: ['portfolio', 'group', 'property'],
-    permissions: ['property.read', 'group.read'],
+    permissions: ['property.read', 'group.read', 'org.read'],
   },
 ];
 

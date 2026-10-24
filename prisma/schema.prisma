@@ -102,12 +102,34 @@ model Property {
   /// makes delivery idempotent and safe to repeat (§1.4).
   shellVersion     Int     @default(0) @map("shell_version")
 
+  // ── The asset and its compliance (docs/01 §1.7) ─────────────────────────
+  // Console-only: none of these are in the shell and none bump shellVersion.
+  // They describe the building the portfolio holds, not how a stay runs —
+  // room types and inventory stay in Inspire.
+
+  streetAddress    String  @default("") @map("street_address")
+  postalCode       String  @default("") @map("postal_code")
+  /// Rentable keys. The number fees, standards tiers and rules key off.
+  keyCount         Int?    @map("key_count")
+  /// One of SERVICE_LEVELS in src/orgs/rules.ts, or '' while unknown.
+  serviceLevel     String  @default("") @map("service_level")
+  yearOpened       Int?    @map("year_opened")
+  yearRenovated    Int?    @map("year_renovated")
+  /// none | scheduled | in_progress | complete
+  pipStatus        String  @default("none") @map("pip_status")
+  pipDueDate       String  @default("") @map("pip_due_date")
+  qaLastDate       String  @default("") @map("qa_last_date")
+  /// pass | conditional | fail, or '' when never inspected.
+  qaLastResult     String  @default("") @map("qa_last_result")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   codes   InnCode[]
   groups  PropertyGroupMember[]
   shellEvents ShellEvent[]
+  ownerships  PropertyOwnership[]
+  managements PropertyManagement[]
 
   @@index([status])
   @@index([marketCode])
@@ -470,4 +492,140 @@ model ShellSubscriber {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("shell_subscriber")
+}
+
+// ───────────────────────────── Ownership and control ───────────────────────
+// docs/01 §1.7. Who owns the building and who runs it.
+//
+// An organization is its own row because one owner or one management company
+// spans many hotels. A property points at them through ASSIGNMENTS, and an
+// assignment is temporal by construction, the same way a grant is: a sale or a
+// change of manager closes one row and opens another, so "who managed EVVHX on
+// 3 March" is a query. Nothing is deleted.
+//
+// The rule this exists to enforce: every MHG hotel is run by a registered
+// third-party management company, never by a principal of its owner. Opening
+// a hotel (pipeline → active) is refused until that holds.
+
+enum OrgKind {
+  ownership
+  management
+
+  @@map("org_kind")
+}
+
+/// An ownership group or a management company. `id` is a slug minted once
+/// (`org_riverside_capital`) and never recomputed, like a group id.
+model Organization {
+  id   String  @id
+  kind OrgKind
+  name String
+
+  legalName          String @default("") @map("legal_name")
+  /// State of formation or registration.
+  registeredState    String @default("") @map("registered_state")
+  /// The state business-entity or licence number that makes a management
+  /// company a registered third party. Required for kind `management`.
+  registrationNumber String @default("") @map("registration_number")
+
+  contactName  String @default("") @map("contact_name")
+  contactEmail String @default("") @map("contact_email")
+  contactPhone String @default("") @map("contact_phone")
+
+  /// Archived organizations drop out of the pickers. An archived management
+  /// company fails compliance wherever it is still assigned.
+  archivedAt DateTime? @map("archived_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  principals  OrganizationPrincipal[]
+  ownerships  PropertyOwnership[]
+  managements PropertyManagement[]
+
+  @@index([kind])
+  @@map("organization")
+}
+
+/// A person who owns or controls an organization. Deliberately NOT a Person:
+/// principals are not console users, and making them rows in `person` would
+/// put logins where only names belong. Compared across organizations on the
+/// lowercased email, which is how "a principal of the owner may not operate
+/// the hotel" is checked.
+model OrganizationPrincipal {
+  id             String @id @default(cuid())
+  organizationId String @map("organization_id")
+  name           String
+  /// Lowercased on write.
+  email          String
+  title          String @default("")
+
+  addedById String?   @map("added_by_id")
+  addedAt   DateTime  @default(now()) @map("added_at")
+  /// Set to remove. The row stays so past compliance can be explained.
+  removedAt DateTime? @map("removed_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, removedAt])
+  @@index([email])
+  @@map("organization_principal")
+}
+
+/// Who owns the building, and when. One live row (effectiveTo null) per
+/// property, kept by the service in a transaction: assigning a new owner
+/// closes the current row on the new row's start date.
+model PropertyOwnership {
+  id             String @id @default(cuid())
+  propertyId     String @map("property_id")
+  organizationId String @map("organization_id")
+
+  /// The single-asset entity on the deed, which is usually not the group.
+  titleEntity      String @default("") @map("title_entity")
+  titleEntityState String @default("") @map("title_entity_state")
+
+  /// The MHG licence agreement with the owner. YYYY-MM-DD, or ''.
+  licenseEffectiveDate String @default("") @map("license_effective_date")
+  licenseExpiryDate    String @default("") @map("license_expiry_date")
+
+  /// YYYY-MM-DD, held as strings like effectiveDate so no zone can shift them.
+  effectiveFrom String  @map("effective_from")
+  effectiveTo   String? @map("effective_to")
+
+  assignedById String?  @map("assigned_by_id")
+  reason       String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  property     Property     @relation(fields: [propertyId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([propertyId, effectiveTo])
+  @@index([organizationId])
+  @@map("property_ownership")
+}
+
+/// Who runs the hotel, and when. Same temporal shape as ownership. The
+/// management agreement's term rides on the assignment because the agreement
+/// and the assignment begin and end together.
+model PropertyManagement {
+  id             String @id @default(cuid())
+  propertyId     String @map("property_id")
+  organizationId String @map("organization_id")
+
+  agreementExpiryDate   String @default("") @map("agreement_expiry_date")
+  terminationNoticeDays Int?   @map("termination_notice_days")
+
+  effectiveFrom String  @map("effective_from")
+  effectiveTo   String? @map("effective_to")
+
+  assignedById String?  @map("assigned_by_id")
+  reason       String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  property     Property     @relation(fields: [propertyId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([propertyId, effectiveTo])
+  @@index([organizationId])
+  @@map("property_management")
 }

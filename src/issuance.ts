@@ -4,6 +4,7 @@ import type { DeriveResult, EngineDeps, IssueRequest, IssueResult, PropertyStatu
 import { prisma } from './db.ts';
 import { materializeAll } from './groups/groups.ts';
 import { checkTransition, type Transition } from './lifecycle.ts';
+import { assertReadyToOpen } from './orgs/orgs.ts';
 import { PrismaRegistry, type PrismaLike } from './registry/prisma.ts';
 import { checkSetup, type ShellSetup } from './setup.ts';
 import { publish } from './shell/publish.ts';
@@ -150,6 +151,10 @@ export async function changeStatus(
   const from = property.status as PropertyStatus;
   const check = checkTransition(from, to);
   if (!check.ok) throw new Error(check.reason);
+  // Opening is where the management rule bites (§1.7): an MHG hotel trades
+  // only with an owner and a registered third-party manager who is not one of
+  // the owner's principals. Abandon and exit are never gated.
+  if (check.transition === 'open') await assertReadyToOpen(property.id, client);
 
   await registryFor(client).setStatus(code, to);
   await client.auditEvent.create({

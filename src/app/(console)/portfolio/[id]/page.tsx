@@ -6,9 +6,29 @@ import { permissionsAt } from '../../../../auth/access.ts';
 import { currentActor } from '../../../../auth/actor.ts';
 import { prisma } from '../../../../db.ts';
 import { TRANSITION_LABELS, nextStatuses } from '../../../../lifecycle.ts';
+import { controlFor, listOrganizations } from '../../../../orgs/orgs.ts';
+import {
+  PIP_LABELS,
+  PIP_STATUSES,
+  SERVICE_LEVELS,
+  SERVICE_LEVEL_LABELS,
+  blocks,
+  type Finding,
+  type ServiceLevel,
+} from '../../../../orgs/rules.ts';
 import { COMMON_TIMEZONES } from '../../../../setup.ts';
 import { provisioningFor } from '../../../../shell/publish.ts';
-import { DeliverNow, LifecycleForm, SetupForm } from './property-forms.tsx';
+import {
+  AssetForm,
+  AssignManagementForm,
+  AssignOwnershipForm,
+  DeliverNow,
+  EndAssignmentForm,
+  LifecycleForm,
+  ManagementTermsForm,
+  OwnershipTermsForm,
+  SetupForm,
+} from './property-forms.tsx';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +63,28 @@ function Panel({ title, note, children }: { title: string; note?: string; childr
   );
 }
 
+function Findings({ findings }: { findings: Finding[] }) {
+  if (!findings.length) return null;
+  return (
+    <ul className="space-y-1 text-xs">
+      {findings.map((f) => (
+        <li key={f.code + f.message} className={f.level === 'block' ? 'text-danger-700' : 'text-warning-700'}>
+          {f.level === 'block' ? '✕' : '!'} {f.message}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Muted({ children }: { children: React.ReactNode }) {
+  return <span className="text-slate-400">{children}</span>;
+}
+
+function term(from: string, to: string): string {
+  if (!from && !to) return '—';
+  return `${from || '?'} → ${to || 'open-ended'}`;
+}
+
 export default async function PropertyPage({ params }: { params: { id: string } }) {
   const actor = await currentActor();
   const held = actor ? await permissionsAt(actor.id) : new Set<string>();
@@ -57,11 +99,21 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   });
   if (!property) notFound();
 
-  const [claim, provisioning, events] = await Promise.all([
+  const canSeeControl = held.has('org.read');
+  const canControl = held.has('org.manage');
+
+  const [claim, provisioning, events, control, orgs] = await Promise.all([
     prisma.marketClaim.findUnique({ where: { marketCode: property.marketCode } }),
     provisioningFor(property.id),
     prisma.shellEvent.findMany({ where: { propertyId: property.id }, orderBy: { seq: 'desc' }, take: 8 }),
+    controlFor(property.id),
+    canControl ? listOrganizations() : Promise.resolve([]),
   ]);
+  const owners = orgs.filter((o) => o.kind === 'ownership').map((o) => ({ id: o.id, name: o.name }));
+  const managers = orgs.filter((o) => o.kind === 'management').map((o) => ({ id: o.id, name: o.name }));
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: property.timezone }).format(new Date());
+  const { ownership, management } = control;
+  const openBlocks = blocks(control.findings);
 
   const status = property.status as PropertyStatus;
   const moves = nextStatuses(status).map((m) => ({ to: m.to, label: TRANSITION_LABELS[m.transition] }));
@@ -134,11 +186,154 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         </dl>
       </Panel>
 
+
+      {canSeeControl ? (
+        <Panel
+          title="Ownership & control"
+          note="Who owns the building and who runs it. Every MHG hotel is run by a registered third-party management company that is not one of its owner's principals — opening is refused until that holds. Console-only: not in the shell."
+        >
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ownership</h3>
+              {ownership ? (
+                <dl className="mt-2">
+                  <Fact label="Ownership group">
+                    <Link href={`/organizations/${ownership.organizationId}`} className="text-brand-600 hover:underline">
+                      {ownership.organization.name}
+                    </Link>{' '}
+                    <Muted>since {ownership.effectiveFrom}</Muted>
+                  </Fact>
+                  <Fact label="Title entity">
+                    {ownership.titleEntity || <Muted>not recorded</Muted>}
+                    {ownership.titleEntityState ? <Muted> · {ownership.titleEntityState}</Muted> : null}
+                  </Fact>
+                  <Fact label="MHG licence">{term(ownership.licenseEffectiveDate, ownership.licenseExpiryDate)}</Fact>
+                  {ownership.organization.contactName ? (
+                    <Fact label="Owner contact">
+                      {ownership.organization.contactName}
+                      {ownership.organization.contactEmail ? <Muted> · {ownership.organization.contactEmail}</Muted> : null}
+                    </Fact>
+                  ) : null}
+                </dl>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">No ownership group assigned.</p>
+              )}
+              {canControl ? (
+                <>
+                  {ownership ? (
+                    <OwnershipTermsForm
+                      propertyId={property.id}
+                      terms={{
+                        titleEntity: ownership.titleEntity,
+                        titleEntityState: ownership.titleEntityState,
+                        licenseEffectiveDate: ownership.licenseEffectiveDate,
+                        licenseExpiryDate: ownership.licenseExpiryDate,
+                      }}
+                    />
+                  ) : null}
+                  <AssignOwnershipForm propertyId={property.id} owners={owners} today={today} replacing={!!ownership} />
+                  {ownership && status !== 'active' && !management ? (
+                    <EndAssignmentForm propertyId={property.id} which="ownership" today={today} />
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Management</h3>
+              {management ? (
+                <dl className="mt-2">
+                  <Fact label="Management company">
+                    <Link href={`/organizations/${management.organizationId}`} className="text-brand-600 hover:underline">
+                      {management.organization.name}
+                    </Link>{' '}
+                    <Muted>since {management.effectiveFrom}</Muted>
+                  </Fact>
+                  <Fact label="Registration">
+                    {management.organization.registrationNumber ? (
+                      <>
+                        <span className="font-mono text-xs">{management.organization.registrationNumber}</span>{' '}
+                        <Muted>{management.organization.registeredState}</Muted>
+                      </>
+                    ) : (
+                      <span className="text-danger-700">none on file</span>
+                    )}
+                  </Fact>
+                  <Fact label="Agreement">
+                    {term(management.effectiveFrom, management.agreementExpiryDate)}
+                    {management.terminationNoticeDays !== null ? <Muted> · {management.terminationNoticeDays}-day notice</Muted> : null}
+                  </Fact>
+                  {management.organization.contactName ? (
+                    <Fact label="Manager contact">
+                      {management.organization.contactName}
+                      {management.organization.contactEmail ? <Muted> · {management.organization.contactEmail}</Muted> : null}
+                    </Fact>
+                  ) : null}
+                </dl>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">
+                  No management company assigned{ownership ? '.' : ' — assign the owner first; the manager is checked against it.'}
+                </p>
+              )}
+              {canControl && ownership ? (
+                <>
+                  {management ? (
+                    <ManagementTermsForm
+                      propertyId={property.id}
+                      terms={{
+                        agreementExpiryDate: management.agreementExpiryDate,
+                        terminationNoticeDays: management.terminationNoticeDays,
+                      }}
+                    />
+                  ) : null}
+                  <AssignManagementForm propertyId={property.id} managers={managers} today={today} replacing={!!management} />
+                  {management && status !== 'active' ? (
+                    <EndAssignmentForm propertyId={property.id} which="management" today={today} />
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            {openBlocks.length === 0 && control.findings.length === 0 ? (
+              <p className="text-xs text-success-700">✓ Owner and management company pass the management rule.</p>
+            ) : (
+              <Findings findings={control.findings} />
+            )}
+          </div>
+
+          {control.ownershipHistory.length || control.managementHistory.length ? (
+            <details className="mt-4">
+              <summary className="cursor-pointer text-xs text-slate-400">Earlier owners and managers</summary>
+              <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                {control.ownershipHistory.map((h) => (
+                  <li key={h.id}>
+                    owner · {h.organization.name} · {h.effectiveFrom} → {h.effectiveTo} · <Muted>{h.reason}</Muted>
+                  </li>
+                ))}
+                {control.managementHistory.map((h) => (
+                  <li key={h.id}>
+                    manager · {h.organization.name} · {h.effectiveFrom} → {h.effectiveTo} · <Muted>{h.reason}</Muted>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </Panel>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel
           title="Lifecycle"
           note="Forward only: pipeline → active → retired, or pipeline → retired if the deal dies. Flag changes are a rebrand, not a status."
         >
+          {status === 'pipeline' && openBlocks.length ? (
+            <div className="mb-4 rounded border border-warning-200 bg-warning-50 px-3 py-2">
+              <p className="mb-1 text-xs font-medium text-warning-800">Cannot open yet</p>
+              <Findings findings={openBlocks} />
+            </div>
+          ) : null}
           {held.has('property.status') ? (
             <LifecycleForm propertyId={property.id} code={property.code} moves={moves} />
           ) : (
@@ -164,6 +359,52 @@ export default async function PropertyPage({ params }: { params: { id: string } 
           )}
         </Panel>
       </div>
+
+
+      <Panel
+        title="The asset"
+        note="The building and its brand compliance. Console-only — room types and inventory stay in Inspire."
+      >
+        {held.has('property.issue') ? (
+          <AssetForm
+            propertyId={property.id}
+            values={{
+              streetAddress: property.streetAddress,
+              postalCode: property.postalCode,
+              keyCount: property.keyCount,
+              serviceLevel: property.serviceLevel,
+              yearOpened: property.yearOpened,
+              yearRenovated: property.yearRenovated,
+              pipStatus: property.pipStatus,
+              pipDueDate: property.pipDueDate,
+              qaLastDate: property.qaLastDate,
+              qaLastResult: property.qaLastResult,
+            }}
+            serviceLevels={SERVICE_LEVELS.map((k) => ({ id: k, name: SERVICE_LEVEL_LABELS[k] }))}
+            pipStatuses={PIP_STATUSES.map((k) => ({ id: k, name: PIP_LABELS[k] }))}
+          />
+        ) : (
+          <dl>
+            <Fact label="Address">
+              {property.streetAddress ? `${property.streetAddress}, ${property.city}, ${property.state} ${property.postalCode}` : <Muted>—</Muted>}
+            </Fact>
+            <Fact label="Keys">{property.keyCount ?? <Muted>—</Muted>}</Fact>
+            <Fact label="Service level">
+              {property.serviceLevel ? SERVICE_LEVEL_LABELS[property.serviceLevel as ServiceLevel] ?? property.serviceLevel : <Muted>—</Muted>}
+            </Fact>
+            <Fact label="Opened / renovated">
+              {property.yearOpened ?? '—'} / {property.yearRenovated ?? '—'}
+            </Fact>
+            <Fact label="PIP">
+              {PIP_LABELS[property.pipStatus as keyof typeof PIP_LABELS] ?? property.pipStatus}
+              {property.pipDueDate ? <Muted> · due {property.pipDueDate}</Muted> : null}
+            </Fact>
+            <Fact label="Last brand QA">
+              {property.qaLastDate ? `${property.qaLastDate} · ${property.qaLastResult}` : <Muted>never</Muted>}
+            </Fact>
+          </dl>
+        )}
+      </Panel>
 
       <Panel
         title="Provisioning"
