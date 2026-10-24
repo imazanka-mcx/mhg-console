@@ -41,13 +41,16 @@ export default async function PeoplePage() {
 
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold text-slate-900">People</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        One identity per person, for life. Access is a grant on top of it — so moving between
-        properties, or coming back later, is a new grant rather than a new account.
-      </p>
-
-      {canManage ? <ProvisionForms roles={ROLES} groups={groups} /> : null}
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">People</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            One identity per person, for life. Access is a grant on top of it — so moving between
+            properties, or coming back later, is a new grant rather than a new account.
+          </p>
+        </div>
+        {canManage ? <ProvisionForms roles={ROLES} groups={groups} /> : null}
+      </div>
 
       <div className="mt-8 space-y-4">
         {people.map((p) => {
