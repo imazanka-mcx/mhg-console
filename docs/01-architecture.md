@@ -7,6 +7,9 @@ constraints on what this app owns, don't have to be re-derived every session.
 Depends on: MHG-IC v1.0 (Inn Code Standard) · `mhg-icgenerator` · `mhotels-inspire` ·
 `mhg-inspiredrev`
 
+> **v0.9 (2026-10-24):** §2.9 added and built — the whole field is in the console. Inspire's
+> Users flow provisions through the console, a one-time import brings local accounts in,
+> and People lists MHG corporate and on-property staff separately.
 > **v0.8 (2026-10-24):** §2.8 added and built — the people stream. One account across
 > the console, Inspire and InspiredREV: the console pushes each person's password hash,
 > status and translated access to both apps, which sign them in on their own. Property
@@ -610,6 +613,8 @@ grant into A/R authority at a hotel by way of the crosswalk. The other rules:
 | property_admin | property | admin | readonly |
 | property_owner | property | gm | readonly *or* revenue_manager |
 | director_of_sales | property | sales | sales *or* revenue_manager |
+| property_revenue_manager | property | revenue_manager | revenue_manager *or* readonly |
+| property_readonly | property | readonly | readonly |
 | gm | property | gm | revenue_manager *(or readonly)* |
 | front_desk | property | front_desk | — |
 | housekeeping | property | housekeeping | — |
@@ -719,6 +724,39 @@ next click.
   shell backfill is part of going live.
 - **Inspire's `sales` no longer edits Rev.** It ranks with `gm`, but rates are authored
   in InspiredREV, so `canEditRev` leaves it read-only there.
+
+
+### 2.9 The whole field is in the console
+
+Every person who works at an MHG hotel is a person here — corporate staff, and every
+on-property user whether corporate onboarded them on People or a GM added them in
+Inspire. On-property staff never use the console; corporate can see, change and suspend
+them here. Built 2026-10-24.
+
+**Inspire's Users flow provisions through the console.** At a hotel in the registry,
+Inspire's Users & Roles and its corporate "appoint" form send the change to
+`/api/registry/v1/people/provision` (signed, like a password change). The console records
+a person and a property grant and streams it straight back. A hotel outside the registry
+keeps local users. What a consumer may ask for is narrow on purpose:
+
+- **One hotel, property-only roles.** `FROM_CONSUMER` maps each Inspire role to the one
+  console role that stands for it, every one property-only and carrying no console
+  permission — so nothing provisioned from below reaches the console or authority above
+  one hotel. Two roles exist for that: `property_revenue_manager` and `property_readonly`.
+  Corporate seats are never accepted from below.
+- **The actor must run the hotel.** Their Inspire role there, worked out from their own
+  console grants, must be admin, gm or corporate admin, and they may not grant above
+  their own rank. Never on a corporate account, never on themselves.
+- **Access granted above the hotel** (group, portfolio) is shown in Inspire as "Set by
+  MHG" and can only be changed here.
+
+**The one-time import** (`npm run people:import` in each app) sends every local account
+with a role at a registry hotel, password hash included, mapped the same way. Corporate
+accounts, admins, brand grants and hotels outside the registry are skipped and listed.
+The people stream then links each one back to its existing row by email. Safe to rerun.
+
+**People** lists two sections: MHG corporate (anyone holding a console role) and On
+property (everyone else).
 
 ---
 

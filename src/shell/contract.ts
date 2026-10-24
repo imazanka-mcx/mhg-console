@@ -386,3 +386,100 @@ export function peopleUrlFor(shellUrl: string): string {
 
 /** Where a consumer sends password changes: the console's base URL + this path. */
 export const PASSWORD_CHANGE_PATH = '/api/registry/v1/people/password';
+
+// ── provisioning from a consumer (docs/01 §2.9) ────────────────────────────
+
+/**
+ * Inspire's Users flow provisions through the console: a GM adds, re-roles or
+ * removes someone at their hotel, the console records it as a person and a
+ * grant, and the people stream brings it back. Signed with the subscription
+ * secret, like a password change. `role` is the consumer's own role key; the
+ * console maps it to a property-only console role, so nothing provisioned from
+ * below ever reaches the console itself.
+ */
+export const PROVISION_PATH = '/api/registry/v1/people/provision';
+
+export interface ProvisionGrant {
+  contract: number;
+  subscriber: string;
+  op: 'grant';
+  /** The registry person making the change — must hold admin or gm there. */
+  actorPersonId: string;
+  email: string;
+  name: string;
+  /** bcrypt of the initial password for someone new; '' for someone who already exists. */
+  passwordHash: string;
+  /** Registry propertyId of the hotel. */
+  propertyId: string;
+  role: string;
+  sentAt: string;
+}
+
+export interface ProvisionRemove {
+  contract: number;
+  subscriber: string;
+  op: 'remove';
+  actorPersonId: string;
+  email: string;
+  propertyId: string;
+  sentAt: string;
+}
+
+/** One local account brought into the console, once. Roles in the consumer's own terms. */
+export interface ImportedPerson {
+  email: string;
+  name: string;
+  passwordHash: string;
+  active: boolean;
+  roles: PersonGrant[];
+}
+
+export interface ProvisionImport {
+  contract: number;
+  subscriber: string;
+  op: 'import';
+  people: ImportedPerson[];
+  sentAt: string;
+}
+
+export type ProvisionRequest = ProvisionGrant | ProvisionRemove | ProvisionImport;
+
+export interface ProvisionAck {
+  ok: boolean;
+  personId?: string;
+  results?: { email: string; outcome: 'created' | 'updated' | 'unchanged' | 'skipped' | 'failed'; detail?: string }[];
+  error?: string;
+}
+
+export function provisionProblem(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return 'not an object';
+  const v = value as Record<string, unknown>;
+  if (v['contract'] !== PEOPLE_CONTRACT) return `unknown contract ${String(v['contract'])}`;
+  if (typeof v['subscriber'] !== 'string' || !v['subscriber']) return 'subscriber missing';
+  const str = (k: string) => typeof v[k] === 'string' && (v[k] as string).length > 0;
+  switch (v['op']) {
+    case 'grant':
+      if (!str('actorPersonId') || !str('email') || !str('propertyId') || !str('role')) return 'grant needs actorPersonId, email, propertyId and role';
+      if (typeof v['name'] !== 'string') return 'name is not a string';
+      if (typeof v['passwordHash'] !== 'string' || (v['passwordHash'] !== '' && !isBcryptHash(v['passwordHash'] as string))) {
+        return 'passwordHash is not bcrypt';
+      }
+      return null;
+    case 'remove':
+      if (!str('actorPersonId') || !str('email') || !str('propertyId')) return 'remove needs actorPersonId, email and propertyId';
+      return null;
+    case 'import': {
+      if (!Array.isArray(v['people'])) return 'people missing';
+      for (const p of v['people'] as unknown[]) {
+        const person = p as Record<string, unknown>;
+        if (typeof person?.['email'] !== 'string' || !person['email']) return 'an imported person has no email';
+        if (typeof person['name'] !== 'string' || typeof person['active'] !== 'boolean') return `${String(person['email'])}: name/active missing`;
+        if (typeof person['passwordHash'] !== 'string') return `${String(person['email'])}: passwordHash missing`;
+        if (!Array.isArray(person['roles'])) return `${String(person['email'])}: roles missing`;
+      }
+      return null;
+    }
+    default:
+      return `unknown op ${String(v['op'])}`;
+  }
+}

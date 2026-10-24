@@ -204,6 +204,31 @@ export const ROLES: RoleSeed[] = [
     },
   },
   {
+    key: 'property_revenue_manager',
+    name: 'Property revenue manager',
+    description:
+      'Revenue manager at one hotel: rates and inventory in InspiredREV, and Inspire’s revenue-manager seat there, which can post to folios. Property only — a revenue manager across hotels is the Revenue manager role.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: ['folio.post'],
+    links: {
+      inspire: { role: 'revenue_manager' },
+      inspiredrev: { role: 'revenue_manager', also: ['readonly'] },
+    },
+  },
+  {
+    key: 'property_readonly',
+    name: 'Property viewer',
+    description: 'Read-only at one hotel in Inspire and InspiredREV. No console access. Property only.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: [],
+    links: {
+      inspire: { role: 'readonly' },
+      inspiredrev: { role: 'readonly' },
+    },
+  },
+  {
     key: 'front_desk',
     name: 'Front desk',
     description: 'Reservations, check-in and folio posting at one hotel. No InspiredREV access.',

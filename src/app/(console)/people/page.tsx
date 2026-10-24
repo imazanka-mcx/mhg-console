@@ -34,10 +34,39 @@ export default async function PeoplePage() {
     include: {
       grants: {
         orderBy: { effectiveFrom: 'desc' },
-        include: { role: true, grantedBy: { select: { name: true } } },
+        include: {
+          role: { include: { permissions: { include: { permission: { select: { ownedBy: true } } } } } },
+          grantedBy: { select: { name: true } },
+        },
       },
     },
   });
+
+  // Two kinds of people, one registry (docs/01 §2.9). Corporate staff hold a
+  // role that reaches the console; everyone else works at a hotel and signs in
+  // to Inspire and InspiredREV only — whether corporate onboarded them here or
+  // a GM added them in Inspire.
+  const now = new Date();
+  const isCorporate = (p: (typeof people)[number]) =>
+    p.grants.some(
+      (g) =>
+        g.effectiveTo === null &&
+        g.effectiveFrom <= now &&
+        g.role.permissions.some((rp) => rp.permission.ownedBy === 'console'),
+    );
+  const sections = [
+    {
+      title: 'MHG corporate',
+      blurb: 'Use the MHG Console, and reach Inspire and InspiredREV through their corporate roles.',
+      list: people.filter((p) => isCorporate(p)),
+    },
+    {
+      title: 'On property',
+      blurb:
+        'Hotel staff — onboarded here or added by a GM in Inspire. They never use the console; corporate can change or suspend them here.',
+      list: people.filter((p) => !isCorporate(p)),
+    },
+  ];
 
   return (
     <div className="max-w-5xl">
@@ -52,8 +81,15 @@ export default async function PeoplePage() {
         {canManage ? <ProvisionForms roles={ROLES} groups={groups} /> : null}
       </div>
 
-      <div className="mt-8 space-y-4">
-        {people.map((p) => {
+      {sections.map(({ title, blurb, list }) => (
+        <section key={title} className="mt-8">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
+            <span className="text-xs text-slate-400">{list.length}</span>
+          </div>
+          <p className="mt-1 text-xs text-slate-400">{blurb}</p>
+          <div className="mt-3 space-y-4">
+        {list.map((p) => {
           const live = p.grants.filter((g) => g.effectiveTo === null);
           const closed = p.grants.filter((g) => g.effectiveTo !== null);
           return (
@@ -124,7 +160,10 @@ export default async function PeoplePage() {
             </div>
           );
         })}
-      </div>
+          </div>
+          {list.length === 0 ? <p className="mt-3 text-sm text-slate-400">Nobody yet.</p> : null}
+        </section>
+      ))}
 
       <p className="mt-6 text-xs text-slate-400">
         Nothing is deleted. Closing a grant sets its end date and leaves the row, so who had access

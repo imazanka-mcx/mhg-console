@@ -229,3 +229,36 @@ export function resolveDownstream(
   }
   return out;
 }
+
+/**
+ * The other direction (§2.9): a role as a consumer names it → the console role
+ * that stands for it. Used when Inspire's Users flow provisions someone, and by
+ * the one-time import of local accounts. One answer per consumer role, and
+ * only the scopes it may arrive at — Inspire's property roles are only ever
+ * granted at one hotel there, so they map to property-only console roles that
+ * carry no console access. Anything missing here is not accepted from a
+ * consumer: corporate seats are provisioned in the console, never from below.
+ */
+export const FROM_CONSUMER: Record<Consumer, Record<string, { roleKey: string; scopes: Scope[] }>> = {
+  inspire: {
+    admin: { roleKey: 'property_admin', scopes: ['property'] },
+    gm: { roleKey: 'gm', scopes: ['property'] },
+    sales: { roleKey: 'director_of_sales', scopes: ['property'] },
+    revenue_manager: { roleKey: 'property_revenue_manager', scopes: ['property'] },
+    front_desk: { roleKey: 'front_desk', scopes: ['property'] },
+    housekeeping: { roleKey: 'housekeeping', scopes: ['property'] },
+    auditor: { roleKey: 'auditor', scopes: ['property'] },
+    readonly: { roleKey: 'property_readonly', scopes: ['property'] },
+  },
+  inspiredrev: {
+    revenue_manager: { roleKey: 'revenue_manager', scopes: ['portfolio', 'property'] },
+    sales: { roleKey: 'sales', scopes: ['portfolio', 'property'] },
+    readonly: { roleKey: 'property_readonly', scopes: ['property'] },
+  },
+};
+
+/** The console role for a consumer's role at a scope, or null if it is not accepted from below. */
+export function consoleRoleFor(consumer: Consumer, role: string, scope: Scope): string | null {
+  const m = FROM_CONSUMER[consumer][role];
+  return m && m.scopes.includes(scope) ? m.roleKey : null;
+}

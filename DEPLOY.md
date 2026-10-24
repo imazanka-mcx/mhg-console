@@ -320,3 +320,24 @@ npm run people -- show --email <you>    # what each app receives
 
 If a consumer answers `Signature does not match` or `Could not reach`, it is the same
 diagnosis as §8 — the people stream rides the same secret and host.
+
+## 10. The whole field in the console (docs/01 §2.9)
+
+No migrations. Deploy **the console first** this time — Inspire's Users flow calls the
+new provisioning endpoint — then seed production for the two new roles:
+
+```bash
+DATABASE_URL="<console prod pooled>" DIRECT_URL="<console prod direct>" npm run db:seed
+```
+
+Then deploy Inspire and InspiredREV, and import each app's local accounts once. From
+each repo, with that app's production database and its `REGISTRY_SHELL_SECRET` inline:
+
+```bash
+# mhotels-inspire, then mhg-inspiredrev
+DATABASE_URL="…" DIRECT_URL="…" REGISTRY_SHELL_SECRET="…" npm run people:import             # dry run
+DATABASE_URL="…" DIRECT_URL="…" REGISTRY_SHELL_SECRET="…" npm run people:import -- --confirm
+```
+
+The dry run lists who comes across and who is skipped. Afterwards everyone appears on
+People under On property, and `npm run people -- subscribers` shows both apps current.

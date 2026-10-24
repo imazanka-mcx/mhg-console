@@ -117,6 +117,10 @@ Built and **verified end to end against the live Neon database**:
   `audit_event`. `npm run sunrise` creates the first account and refuses once
   any person exists; that account holds `owner` at portfolio scope and
   provisions everyone else, including other owners.
+- **The whole field in the console** (`docs/01 §2.9`, 2026-10-24). Inspire's
+  Users flow provisions through `/api/registry/v1/people/provision`; a one-time
+  `npm run people:import` in each app brings local accounts in; People splits
+  MHG corporate from On property. Go-live: DEPLOY.md §10.
 - **Editing people** (`docs/01 §2.5`, 2026-10-24). `/people/[id]`: change a
   grant's role, scope or per-app role in one step, edit name and email, suspend,
   reactivate, offboard, reset a password. All of it reaches Inspire and

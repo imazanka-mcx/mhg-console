@@ -92,6 +92,8 @@ export interface GrantInput {
    * (§2.7). Omitted consumers take the role's default.
    */
   downstream?: Partial<Record<Consumer, string>>;
+  /** false to batch: the caller publishes once for many grants (the import). */
+  publish?: boolean;
 }
 
 /**
@@ -191,7 +193,7 @@ export async function grantAccess(input: GrantInput) {
 
   // Inspire and InspiredREV hear about it on the people stream (§2.8). Never
   // fails the grant: a consumer that misses it catches up from its cursor.
-  await publishPeople([input.personId], 'grant');
+  if (input.publish !== false) await publishPeople([input.personId], 'grant');
 
   return grant;
 }
