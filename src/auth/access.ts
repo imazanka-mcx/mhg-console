@@ -1,6 +1,10 @@
 import { prisma } from '../db.ts';
 import { groupIdsForProperty, resolveProperty } from '../groups/groups.ts';
 import { ScopeViolation, covers, firewallViolations, isLive, type Scope } from './scope.ts';
+import { roleByKey } from './catalog.ts';
+import { resolveDownstream, type Consumer } from './consumer-roles.ts';
+import { publishPeople } from '../people/publish.ts';
+import { holdsConsoleRole } from '../people/translate.ts';
 
 /**
  * Resolving and issuing access (docs/01 §2).
@@ -83,6 +87,11 @@ export interface GrantInput {
   scopeRef?: string | null;
   grantedById: string | null;
   reason: string;
+  /**
+   * What the grant becomes in a consumer, where its role allows a choice
+   * (§2.7). Omitted consumers take the role's default.
+   */
+  downstream?: Partial<Record<Consumer, string>>;
 }
 
 /**
@@ -118,6 +127,14 @@ export async function grantAccess(input: GrantInput) {
   );
   if (violations.length) throw new ScopeViolation(input.scope, violations);
 
+  // The crosswalk lives in the catalog the database was seeded from. A role
+  // the catalog does not know reaches no consumer, so it gets no choice.
+  const seed = roleByKey(role.key);
+  const downstream = resolveDownstream(
+    { key: role.key, links: seed?.links ?? {} },
+    input.downstream ?? {},
+  );
+
   let scopeRef = input.scope === 'portfolio' ? null : (input.scopeRef?.trim() || null);
   if (input.scope !== 'portfolio' && !scopeRef) {
     throw new Error(`A ${input.scope} grant needs something to point at.`);
@@ -149,6 +166,9 @@ export async function grantAccess(input: GrantInput) {
       scopeRef,
       grantedById: input.grantedById,
       reason: input.reason,
+      downstream: {
+        create: Object.entries(downstream).map(([consumer, consumerRole]) => ({ consumer, consumerRole })),
+      },
     },
   });
 
@@ -163,10 +183,15 @@ export async function grantAccess(input: GrantInput) {
         roleVersion: role.version,
         scope: input.scope,
         scopeRef,
+        downstream,
         reason: input.reason,
       },
     },
   });
+
+  // Inspire and InspiredREV hear about it on the people stream (§2.8). Never
+  // fails the grant: a consumer that misses it catches up from its cursor.
+  await publishPeople([input.personId], 'grant');
 
   return grant;
 }
@@ -218,7 +243,27 @@ export async function revokeGrant(grantId: string, actorId: string, reason: stri
     },
   });
 
+  await publishPeople([grant.personId], 'grant');
+
   return closed;
+}
+
+/**
+ * May this person use the console at all (§2.8)? Only corporate staff: someone
+ * whose live grants are all property-operations roles signs in to Inspire and
+ * InspiredREV, never here — even with a correct password.
+ */
+export async function hasConsoleAccess(personId: string): Promise<boolean> {
+  const grants = await prisma.grant.findMany({
+    where: { personId, effectiveTo: null },
+    include: { role: { include: { permissions: { include: { permission: true } } } } },
+  });
+  const now = new Date();
+  return holdsConsoleRole(
+    grants
+      .filter((g) => isLive(g, now))
+      .map((g) => ({ permissions: g.role.permissions.map((rp) => ({ ownedBy: rp.permission.ownedBy })) })),
+  );
 }
 
 /** True when nobody has ever been created — the only moment sunrise may run. */

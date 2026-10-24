@@ -17,6 +17,7 @@
     "issue": "node --experimental-strip-types scripts/issue.ts",
     "groups": "node --env-file-if-exists=.env --experimental-strip-types scripts/groups.ts",
     "shell": "node --env-file-if-exists=.env --experimental-strip-types scripts/shell.ts",
+    "people": "node --env-file-if-exists=.env --experimental-strip-types scripts/people.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

@@ -20,6 +20,10 @@
  * mappings and A/R are consumer-side and never appear here. Neither does
  * businessDate — that is operational state the PMS owns from the moment it
  * stands a property up.
+ *
+ * The same file carries the PEOPLE stream (docs/01 §2.8): who may sign in to
+ * each consumer, with what password and what access. Same signing, same
+ * cursor discipline, its own contract number.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -218,3 +222,167 @@ export function coalesce(
     .sort((a, b) => a.seq - b.seq);
   return { through, latest };
 }
+
+// ── the people stream (docs/01 §2.8) ───────────────────────────────────────
+
+export const PEOPLE_CONTRACT = 1;
+
+export type PersonStatus = 'invited' | 'active' | 'suspended' | 'offboarded';
+export const PERSON_STATUSES: readonly PersonStatus[] = ['invited', 'active', 'suspended', 'offboarded'];
+
+export type GrantScope = 'portfolio' | 'group' | 'property';
+export const GRANT_SCOPES: readonly GrantScope[] = ['portfolio', 'group', 'property'];
+
+/** The consumers a person can be given access to. */
+export type PeopleConsumer = 'inspire' | 'inspiredrev';
+export const PEOPLE_CONSUMERS: readonly PeopleConsumer[] = ['inspire', 'inspiredrev'];
+
+/**
+ * One live grant, already translated into the consumer's own role (the
+ * console's role crosswalk, docs/01 §2.7). The consumer resolves WHERE itself,
+ * from its registry mirror: `portfolio` is every property, `group` is every
+ * property whose shell lists that group id, `property` is that propertyId.
+ */
+export interface PersonGrant {
+  scope: GrantScope;
+  /** '' for portfolio; a group id; or the registry propertyId — never the code. */
+  ref: string;
+  /** The consumer's role key, e.g. `gm`, `corporate_admin`, `revenue_manager`. */
+  role: string;
+}
+
+export interface Person {
+  contract: number;
+  /** Immutable. The key every consumer holds for this human. */
+  personId: string;
+  /** Lowercased. Also the sign-in name everywhere. */
+  email: string;
+  name: string;
+  /** Only `active` may sign in. Anything else is a person who keeps their history and loses their access. */
+  status: PersonStatus;
+  /** bcrypt. '' when the person has no password yet — nobody can sign in as them. */
+  passwordHash: string;
+  /** Monotonic per person. Apply only if newer than what you hold. */
+  personVersion: number;
+  /** This consumer's grants only. Empty means a person with no access here. */
+  grants: PersonGrant[];
+}
+
+export interface PersonEnvelope {
+  seq: number;
+  person: Person;
+}
+
+/** What the console POSTs to a consumer's /api/registry/v1/people. */
+export interface PeopleBatch {
+  contract: number;
+  subscriber: string;
+  after: number;
+  through: number;
+  events: PersonEnvelope[];
+  sentAt: string;
+}
+
+export interface PeopleAck {
+  ok: boolean;
+  appliedThrough: number;
+  results: { personId: string; personVersion: number; outcome: ApplyOutcome; detail?: string }[];
+  error?: string;
+}
+
+/**
+ * A consumer → console password change (POST /api/registry/v1/people/password),
+ * signed with the same secret. The consumer has already checked the current
+ * password against the hash it holds; it sends the NEW hash, never a password.
+ */
+export interface PasswordChange {
+  contract: number;
+  subscriber: string;
+  personId: string;
+  passwordHash: string;
+  sentAt: string;
+}
+
+export interface PasswordChangeAck {
+  ok: boolean;
+  /** The person's version after the change; apply your own copy at this version. */
+  personVersion?: number;
+  error?: string;
+}
+
+/** bcrypt, any of the $2a/$2b/$2y variants. */
+export function isBcryptHash(value: string): boolean {
+  return /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(value);
+}
+
+/** Why a value is not a person, or null if it is one. */
+export function personProblem(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return 'not an object';
+  const v = value as Record<string, unknown>;
+  if (v['contract'] !== PEOPLE_CONTRACT) return `unknown contract ${String(v['contract'])}`;
+  for (const f of ['personId', 'email', 'name', 'passwordHash'] as const) {
+    if (typeof v[f] !== 'string') return `${f} is not a string`;
+  }
+  if (!v['personId'] || !v['email']) return 'personId and email are required';
+  if (v['passwordHash'] !== '' && !isBcryptHash(v['passwordHash'] as string)) return 'passwordHash is not bcrypt';
+  if (!PERSON_STATUSES.includes(v['status'] as PersonStatus)) return `unknown status ${String(v['status'])}`;
+  if (!Number.isInteger(v['personVersion']) || (v['personVersion'] as number) < 1) {
+    return 'personVersion is not a positive integer';
+  }
+  if (!Array.isArray(v['grants'])) return 'grants is not a list';
+  for (const g of v['grants'] as unknown[]) {
+    const grant = g as Record<string, unknown>;
+    if (!GRANT_SCOPES.includes(grant?.['scope'] as GrantScope)) return `grant with unknown scope ${String(grant?.['scope'])}`;
+    if (typeof grant['ref'] !== 'string' || typeof grant['role'] !== 'string' || !grant['role']) return 'grant without ref or role';
+    if ((grant['scope'] === 'portfolio') !== (grant['ref'] === '')) return 'a portfolio grant has no ref, and only it';
+  }
+  return null;
+}
+
+export function peopleBatchProblem(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return 'not an object';
+  const b = value as Record<string, unknown>;
+  if (b['contract'] !== PEOPLE_CONTRACT) return `unknown contract ${String(b['contract'])}`;
+  if (!Number.isInteger(b['after']) || !Number.isInteger(b['through'])) return 'after/through missing';
+  if (!Array.isArray(b['events'])) return 'events missing';
+  let last = b['after'] as number;
+  for (const e of b['events'] as unknown[]) {
+    const env = e as Record<string, unknown>;
+    if (!Number.isInteger(env?.['seq'])) return 'event without a seq';
+    if ((env['seq'] as number) <= last) return 'events are not ascending';
+    last = env['seq'] as number;
+    const problem = personProblem(env['person']);
+    if (problem) return `event ${String(env['seq'])}: ${problem}`;
+  }
+  if (last > (b['through'] as number)) return 'an event lies past `through`';
+  return null;
+}
+
+export function passwordChangeProblem(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return 'not an object';
+  const v = value as Record<string, unknown>;
+  if (v['contract'] !== PEOPLE_CONTRACT) return `unknown contract ${String(v['contract'])}`;
+  if (typeof v['subscriber'] !== 'string' || !v['subscriber']) return 'subscriber missing';
+  if (typeof v['personId'] !== 'string' || !v['personId']) return 'personId missing';
+  if (typeof v['passwordHash'] !== 'string' || !isBcryptHash(v['passwordHash'])) return 'passwordHash is not bcrypt';
+  return null;
+}
+
+/**
+ * Collapse a window of person notices to one per person, at its last seq —
+ * the person is built from current state, so a burst of grants delivers once.
+ */
+export function coalescePeople(
+  notices: readonly { seq: number; personId: string }[],
+): { through: number; latest: { seq: number; personId: string }[] } {
+  const { through, latest } = coalesce(notices.map((n) => ({ seq: n.seq, propertyId: n.personId })));
+  return { through, latest: latest.map((l) => ({ seq: l.seq, personId: l.propertyId })) };
+}
+
+/** Where a subscriber's people receiver lives: next to its shell receiver. */
+export function peopleUrlFor(shellUrl: string): string {
+  return shellUrl.replace(/\/shell\/?$/, '/people');
+}
+
+/** Where a consumer sends password changes: the console's base URL + this path. */
+export const PASSWORD_CHANGE_PATH = '/api/registry/v1/people/password';

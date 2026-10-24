@@ -10,7 +10,16 @@ interface RoleOption {
   name: string;
   description: string;
   assignableAt: readonly string[];
+  /** What the role becomes in each app (docs/01 §2.7). */
+  links: Partial<Record<'inspire' | 'inspiredrev', { role: string; also?: string[] }>>;
 }
+
+const APPS = [
+  { key: 'inspire', label: 'Inspire' },
+  { key: 'inspiredrev', label: 'InspiredREV' },
+] as const;
+
+const pretty = (k: string) => k.replace(/_/g, ' ');
 
 export interface GroupOption {
   id: string;
@@ -117,6 +126,41 @@ export function ProvisionForms({
           </p>
         </div>
       </div>
+
+      {role ? (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          {APPS.map((app) => {
+            const link = role.links[app.key];
+            const options = link ? [link.role, ...(link.also ?? [])] : [];
+            return (
+              <div key={`${role.key}-${app.key}`}>
+                <label className={LABEL} htmlFor={`downstream_${app.key}`}>
+                  In {app.label}
+                </label>
+                {options.length > 1 ? (
+                  <select
+                    id={`downstream_${app.key}`}
+                    name={`downstream_${app.key}`}
+                    defaultValue={options[0]}
+                    className={INPUT}
+                  >
+                    {options.map((o, i) => (
+                      <option key={o} value={o}>
+                        {pretty(o)}
+                        {i === 0 ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                    {options[0] ? pretty(options[0]) : 'No access'}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       {effectiveScope === 'property' ? (
         <div className="mt-4">

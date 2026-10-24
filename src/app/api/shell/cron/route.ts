@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { deliverAll } from '../../../../shell/publish.ts';
+import { deliverAllPeople } from '../../../../people/publish.ts';
 
 /**
  * Daily safety net for the shell stream (docs/01 §1.4).
@@ -28,8 +29,15 @@ async function handle(req: Request): Promise<NextResponse> {
   if (req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
   }
-  const results = await deliverAll();
-  return NextResponse.json({ ok: results.every((r) => r.ok), results, at: new Date().toISOString() });
+  // Both streams ride the same subscriptions; the people stream (§2.8) is
+  // caught up in the same pass.
+  const [results, people] = await Promise.all([deliverAll(), deliverAllPeople()]);
+  return NextResponse.json({
+    ok: results.every((r) => r.ok) && people.every((r) => r.ok),
+    results,
+    people,
+    at: new Date().toISOString(),
+  });
 }
 
 export const GET = handle;

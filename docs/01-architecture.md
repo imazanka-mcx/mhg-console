@@ -7,6 +7,13 @@ constraints on what this app owns, don't have to be re-derived every session.
 Depends on: MHG-IC v1.0 (Inn Code Standard) · `mhg-icgenerator` · `mhotels-inspire` ·
 `mhg-inspiredrev`
 
+> **v0.8 (2026-10-24):** §2.8 added and built — the people stream. One account across
+> the console, Inspire and InspiredREV: the console pushes each person's password hash,
+> status and translated access to both apps, which sign them in on their own. Property
+> staff change passwords inside the apps; only corporate staff may use the console.
+> **v0.7 (2026-10-24):** §2.7 added and built — the role crosswalk. Each console role
+> names the one role it becomes in Inspire and in InspiredREV, checked against the
+> firewall, as the first step toward one account across all three apps.
 > **v0.6 (2026-10-24):** §1.7 added and built — ownership and control. Organizations
 > (ownership groups, management companies) with principals, dated ownership and
 > management assignments per property, the management rule as a gate on opening, and
@@ -541,6 +548,171 @@ and A/R permissions cannot ride on it. Someone at corporate who genuinely needs 
 property takes an explicit `property` grant or a time-boxed **Elevate** — the honest
 expression of `docs/29 §3` anyway.
 
+
+### 2.7 The role crosswalk
+
+One person should sign in to Inspire and InspiredREV with the same account, provisioned
+once, here. That needs one fact the grant model did not hold: what a console role
+*becomes* in each app. A grant says "gm at ALQBC"; Inspire needs a `user_property_role`
+of `gm`, and InspiredREV needs a `readonly` user with a property-scope `access_grant`.
+The crosswalk is that translation, as data. Built 2026-10-24.
+
+**The shape.**
+
+- `consumer_role` — a mirror of the roles each consumer enforces in its own code:
+  Inspire's `Role` and `OrgRole` enums, InspiredREV's `Role` enum. Not a design — when a
+  consumer changes a role, the mirror follows in the same change. Each row has a `tier`
+  (`org` for Inspire's corporate roles, held org-wide; `property` for everything else)
+  and `carries`: the console permission keys it implies downstream.
+- `role_link` — one row per consumer role a console role may become, exactly one of
+  them the default. **No rows means no access in that app.** A link is part of a role's
+  meaning, so changing one bumps the role's version exactly like changing its
+  permissions (§2.4).
+- `grant_downstream` — what each grant became in each consumer, fixed when it was
+  issued. Where a link offers a choice — a GM is `readonly` in InspiredREV unless
+  `revenue_manager` is chosen — the People form asks, and `grantAccess` refuses anything
+  the link does not allow. Written for every consumer the role reaches, default or not,
+  so the people stream reads it rather than re-deriving it. Changing it is a transfer.
+
+Both are seeded from `src/auth/catalog.ts` (`RoleSeed.links`) and
+`src/auth/consumer-roles.ts` by `npm run db:seed`, which validates first and writes
+nothing if a rule fails.
+
+**The rule that makes it safe: a console role holds what its link carries.** Inspire's
+`gm` manages A/R and posts to folios, so it carries `ar.view`, `ar.manage` and
+`folio.post`. A console role may link to it only if it holds those same three — and
+since they are capped at `property`, that role is property-only. The firewall (§2.3)
+now governs the link, not just the console role: nothing can turn a group or portfolio
+grant into A/R authority at a hotel by way of the crosswalk. The other rules:
+
+1. A link names roles that exist in that consumer. Every allowed role is checked, not
+   just the default — a choice must not be a way around the firewall.
+2. An `org`-tier role is reachable only from a console role assignable at portfolio and
+   nowhere narrower. A property grant never becomes corporate authority.
+3. An **exception** may be declared on a link that breaks the carries rule, with its
+   reason. Every seed prints it, and a stale exception — one no longer needed — is an
+   error, so none outlive their reason.
+
+**The crosswalk as shipped.**
+
+| Console role | Scopes | Inspire | InspiredREV |
+|---|---|---|---|
+| owner | portfolio | corporate_admin ⚠ | admin |
+| registrar | portfolio | corporate_viewer | readonly |
+| viewer | portfolio, group, property | readonly | readonly |
+| property_admin | property | admin | readonly |
+| property_owner | property | gm | readonly *or* revenue_manager |
+| director_of_sales | property | sales | sales *or* revenue_manager |
+| gm | property | gm | revenue_manager *(or readonly)* |
+| front_desk | property | front_desk | — |
+| housekeeping | property | housekeeping | — |
+| auditor | property | auditor | auditor |
+| revenue_manager | portfolio, group, property | readonly | revenue_manager |
+| sales | portfolio, group, property | readonly | sales |
+
+⚠ The one exception. `corporate_admin` is admin at every hotel, A/R included — the §2.6
+problem — and it is the only Inspire role that can stand up a property. Owner holds no
+A/R, so the link breaks the rule on purpose. It retires when Inspire takes its roles
+from grants (§4 step 5).
+
+**Ownership is not corporate.** A principal of a hotel's ownership group gets
+`property_owner` at that hotel: GM-level in Inspire, never `corporate_admin`, and the
+same InspiredREV choice as a GM. Console `owner` is a different thing — it owns the
+*registry* (the sunrise account) and is the only role linked to `corporate_admin`.
+
+**What building it settled.**
+
+- **Inspire's `revenue_manager` posts to folios.** Its rank (70) clears `front_desk`
+  (60), and folio posting is gated `front_desk`+. So it carries `folio.post` and cannot
+  ride a wider grant. A console `revenue_manager` — who works across hotels — is
+  `readonly` in Inspire and authors in InspiredREV, where rates actually live. The rank
+  ladder is the bug; this is the containment.
+- **The property-operations roles carry only their downstream permissions.** `gm`,
+  `front_desk` and the rest hold no console permission beyond what their Inspire role
+  carries. They exist here so a person is provisioned once, not so they work in the
+  console.
+- **InspiredREV holds one role per user.** Several grants that link to different
+  InspiredREV roles must collapse to one — the highest-ranked, with the grants' scopes
+  unioned into `access_grant`. That is the people stream's job, not this table's; `rank`
+  is here so it can.
+- **Inspire gained a `sales` role and reshaped `auditor` (2026-10-24).** Inspire's
+  `sales` ranks with `gm` and carries the same A/R and posting authority, without Room
+  Types or Property Settings. It is mirrored but unlinked: the console `sales` role rides
+  group and portfolio grants, so it stays `readonly` in Inspire. Inspire's `auditor` now
+  ranks with `front_desk` and posts to folios, so the console `auditor` holds
+  `folio.post` beside `ar.view` — still property-only.
+- **Granting a property-operations role does nothing downstream yet.** The crosswalk is
+  the translation; the people stream that delivers person, password hash, status and
+  translated grants to each consumer is the next build.
+
+
+### 2.8 The people stream — one account everywhere
+
+The crosswalk (§2.7) says what a grant becomes downstream; this is how it gets there.
+Built 2026-10-24. A person is provisioned once, on People, and signs in to Inspire and
+InspiredREV with the same email and password.
+
+**The shape.** The shell stream's twin (§1.4), on the same subscriptions and secrets:
+
+- `person.person_version` and `person_event` — the same outbox discipline: a notice, not
+  a payload. The person is built from current state at delivery, so a replay converges
+  and a burst of grants delivers once.
+- `shell_subscriber.people_cursor` (+ `people_last_*`) — each consumer's position in the
+  people stream. Delivered to `/api/registry/v1/people`, beside the shell receiver.
+- The payload (`Person` in `src/shell/contract.ts`, copied verbatim to both consumers):
+  email, name, status, bcrypt hash, version, and **this consumer's grants only**, already
+  translated — `{ scope, ref, role }` with `ref` a group id or a registry propertyId,
+  never an inn code. Plaintext passwords never travel; the contract refuses anything that
+  is not a bcrypt hash.
+
+**When it fires.** `grantAccess`, `revokeGrant`, a password change here or downstream.
+Each publishes on the spot and never fails the change that caused it; the daily cron
+catches up both streams in one pass. `npm run people -- backfill --confirm` puts existing
+people in.
+
+**What the consumers do with it.**
+
+- They upsert an `AppUser` linked by `registry_person_id`. The first delivery of an email
+  that already exists locally **takes that row over** — same id, same history. Accounts
+  the console never delivers keep working as local accounts, shown separately.
+- A person signs in only when `active`, with a password, and with some access in that
+  app. Suspended, offboarded, or with every grant closed: row kept, sign-in refused.
+- WHERE is resolved **at sign-in** against the registry mirror (`portfolio` = every
+  property, `group` = properties whose shell lists it, `property` = that propertyId). A
+  hotel stood up or regrouped since the last delivery is covered without another one.
+- Access for a console-managed person is read-only in the app: Inspire's Users & Roles,
+  appointments and InspiredREV's grant forms refuse it, and list such people under
+  "Managed by Maz Hotels Group".
+
+**Passwords live here; property staff never come here.** A person changes their password
+in Inspire or InspiredREV under Account. The app checks the current password against its
+own copy, hashes the new one, and POSTs the hash — signed with its subscription secret —
+to `/api/registry/v1/people/password`. Only once the console accepts it does the app
+change its own copy, and the stream carries it to the other app. A consumer may only
+change the password of someone it gives access to. This is the one path that needs the
+console up; signing in never does (R2).
+
+**Only corporate staff use the console.** A person whose live grants all are
+property-operations roles (§2.7) is refused at console sign-in — after the password
+check, with a message that points them to Inspire and InspiredREV — and `currentActor`
+re-checks every request, so closing someone's last corporate grant removes them on the
+next click.
+
+**What building it settled.**
+
+- **InspiredREV holds one role per user.** Mixed roles collapse to the strongest, scoped
+  only to the grants that carry it. Collapsing the other way would give revenue-manager
+  authority where only read-only was granted. The weaker grants are set aside and the
+  ack says so. Per-property roles in InspiredREV would remove the compromise.
+- **Inspire and InspiredREV compute access at sign-in, into a 12-hour session.** A
+  revoked grant or a suspension takes effect at the person's next sign-in, not
+  mid-shift. That is the open "revocation lag" decision in §5, now concrete.
+- **InspiredREV did not keep group membership.** Properties now carry
+  `registry_groups` from their shell; it fills on each property's next shell, so a
+  shell backfill is part of going live.
+- **Inspire's `sales` no longer edits Rev.** It ranks with `gm`, but rates are authored
+  in InspiredREV, so `canEditRev` leaves it read-only there.
+
 ---
 
 ## 3. Sections
@@ -732,8 +904,9 @@ Steps 1–5 stand on their own. Steps 7–8 are worthless without them.
   rebrand needs a transfer. Nothing forces the decision until the first rebrand of a hotel
   somebody holds a property grant on.
 - Revocation lag target for financial roles (drives token TTL).
-- Cross-app auth: whether Inspire and InspiredREV authenticate against a mirror of
-  `person`/`grant` (R2 says yes) and what the refresh cadence is.
+- ~~Cross-app auth.~~ Settled and built — §2.7, §2.8, 2026-10-24: a mirror, as R2 said.
+- Revocation lag: consumers resolve access into a 12-hour session at sign-in (§2.8).
+  Whether financial roles need a shorter session, or a per-request status check, is open.
 - ~~Whether this app owns org structure (entities, ownership cos) or mirrors it.~~
   Owns it — §1.7, 2026-10-24.
 - **Key people at a property** (GM, DOS, DOF, owner's rep). As grants they would mean

@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '../../db.ts';
 import { createSession, destroySession } from '../../auth/session.ts';
 import { verifyPassword } from '../../auth/password.ts';
+import { hasConsoleAccess } from '../../auth/access.ts';
 
 export type LoginState = { error?: string };
 
@@ -27,6 +28,12 @@ export async function signInAction(_prev: LoginState, form: FormData): Promise<L
       data: { actorId: person.id, action: 'auth.failed', subject: person.id, detail: {} },
     });
     return refuse;
+  }
+
+  // The console is for MHG corporate staff (§2.8). Past the password check,
+  // so this tells nobody anything they could not already prove they know.
+  if (!(await hasConsoleAccess(person.id))) {
+    return { error: 'This account signs in to Inspire and InspiredREV, not the MHG Console.' };
   }
 
   await createSession({ personId: person.id, email: person.email });

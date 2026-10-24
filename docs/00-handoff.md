@@ -117,6 +117,24 @@ Built and **verified end to end against the live Neon database**:
   `audit_event`. `npm run sunrise` creates the first account and refuses once
   any person exists; that account holds `owner` at portfolio scope and
   provisions everyone else, including other owners.
+- **The people stream** (`docs/01 §2.8`, 2026-10-24). One account across the
+  console, Inspire and InspiredREV. `person_event` outbox and a people cursor on
+  each shell subscriber; `npm run people -- …` mirrors `npm run shell`.
+  Consumers sign people in on their own and change passwords through
+  `/api/registry/v1/people/password`. The console refuses anyone without a
+  corporate role. Go-live: DEPLOY.md §9.
+- **The role crosswalk** (`docs/01 §2.7`, 2026-10-24). `consumer_role` mirrors
+  the roles Inspire and InspiredREV enforce; `role_link` says what each console
+  role may become in each, with a default; `grant_downstream` records what each
+  grant became. Eight property-operations roles (`property_admin`,
+  `property_owner`, `gm`, `front_desk`, `housekeeping`, `auditor`,
+  `revenue_manager`, `sales`) join the catalog so people are provisioned once,
+  here. GMs and property owners choose readonly or revenue manager for
+  InspiredREV on the People form. `npm run db:seed` validates the
+  crosswalk against the firewall before writing. Nothing reaches the consumers
+  yet — the people stream is the next build. Hand-written migrations
+  (`*_role_crosswalk`, `*_role_link_choices`): `prisma migrate dev` on the Mac, then `db:seed` on both
+  databases.
 - **Groups** (`docs/01 §2.2`). `property_group` / `property_group_member`,
   manual and rule-backed, materialized either way. The `group` scope now has
   something to point at: a group grant reaches every property in the group, and

@@ -1,3 +1,4 @@
+import type { Links } from './consumer-roles.ts';
 import type { Scope } from './scope.ts';
 
 /**
@@ -26,6 +27,12 @@ export interface RoleSeed {
   version: number;
   assignableAt: Scope[];
   permissions: string[];
+  /**
+   * The role this becomes inside each consumer (docs/01 §2.7). A missing
+   * consumer means no access there. Part of the role's meaning, so a change
+   * here bumps the version exactly like a change to `permissions`.
+   */
+  links: Links;
 }
 
 export const PERMISSIONS: PermissionSeed[] = [
@@ -91,6 +98,14 @@ export const ROLES: RoleSeed[] = [
       'people.manage',
       'standards.manage',
     ],
+    links: {
+      inspire: {
+        role: 'corporate_admin',
+        exception:
+          'Inspire has no middle tier (§2.6): corporate_admin is the only role that can stand up a property, and it is admin at every hotel. Retire when Inspire takes its roles from grants (§4 step 5).',
+      },
+      inspiredrev: { role: 'admin' },
+    },
   },
   {
     key: 'registrar',
@@ -110,6 +125,10 @@ export const ROLES: RoleSeed[] = [
       'org.manage',
       'standards.manage',
     ],
+    links: {
+      inspire: { role: 'corporate_viewer' },
+      inspiredrev: { role: 'readonly' },
+    },
   },
   {
     key: 'viewer',
@@ -119,6 +138,131 @@ export const ROLES: RoleSeed[] = [
     version: 1,
     assignableAt: ['portfolio', 'group', 'property'],
     permissions: ['property.read', 'group.read', 'org.read'],
+    links: {
+      inspire: { role: 'readonly' },
+      inspiredrev: { role: 'readonly' },
+    },
+  },
+
+  // ── property operations ─────────────────────────────────────────────────
+  // Roles whose work happens in Inspire and InspiredREV, not here. They exist
+  // in the console so a person is provisioned once, in one place, and the
+  // crosswalk (§2.7) decides what they become downstream. Their console
+  // permissions are exactly what their Inspire role carries — which is what
+  // puts the A/R and posting authority under the firewall: each one that
+  // touches money is property-only, by its own permissions, not by a promise.
+  {
+    key: 'property_admin',
+    name: 'Property admin',
+    description:
+      'Runs one hotel’s Inspire instance — users, taxes, configuration — with full A/R and posting authority there. Property only.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: ['ar.view', 'ar.manage', 'folio.post'],
+    links: {
+      inspire: { role: 'admin' },
+      inspiredrev: { role: 'readonly' },
+    },
+  },
+  {
+    key: 'property_owner',
+    name: 'Property owner',
+    description:
+      'A principal of the hotel’s ownership group: GM-level access to that hotel in Inspire, never corporate authority. Read-only in InspiredREV, or revenue manager if chosen at grant time. Property only.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: ['ar.view', 'ar.manage', 'folio.post'],
+    links: {
+      inspire: { role: 'gm' },
+      inspiredrev: { role: 'readonly', also: ['revenue_manager'] },
+    },
+  },
+  {
+    key: 'gm',
+    name: 'General manager',
+    description:
+      'Runs one hotel: front office, A/R and the night audit in Inspire. Revenue manager for its hotel in InspiredREV, or read-only if chosen at grant time. Property only.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: ['ar.view', 'ar.manage', 'folio.post'],
+    links: {
+      inspire: { role: 'gm' },
+      inspiredrev: { role: 'revenue_manager', also: ['readonly'] },
+    },
+  },
+  {
+    key: 'director_of_sales',
+    name: 'Director of sales',
+    description:
+      'Runs one hotel commercially with a GM’s authority in Inspire — A/R, groups, companies, the night audit — but not its configuration. Sales in InspiredREV, or revenue manager if chosen at grant time. Property only.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: ['ar.view', 'ar.manage', 'folio.post'],
+    links: {
+      inspire: { role: 'sales' },
+      inspiredrev: { role: 'sales', also: ['revenue_manager'] },
+    },
+  },
+  {
+    key: 'front_desk',
+    name: 'Front desk',
+    description: 'Reservations, check-in and folio posting at one hotel. No InspiredREV access.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: ['folio.post'],
+    links: {
+      inspire: { role: 'front_desk' },
+    },
+  },
+  {
+    key: 'housekeeping',
+    name: 'Housekeeping',
+    description: 'Room status and task sheets at one hotel. No InspiredREV access.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: [],
+    links: {
+      inspire: { role: 'housekeeping' },
+    },
+  },
+  {
+    key: 'auditor',
+    name: 'Auditor',
+    description:
+      'Works the desk overnight at one hotel in Inspire — everything front desk can do, plus the night audit and read-only A/R and GL; read-only audit access in InspiredREV. Property only, because it posts and sees direct-bill exposure.',
+    version: 1,
+    assignableAt: ['property'],
+    permissions: ['ar.view', 'folio.post'],
+    links: {
+      inspire: { role: 'auditor' },
+      inspiredrev: { role: 'auditor' },
+    },
+  },
+  {
+    key: 'revenue_manager',
+    name: 'Revenue manager',
+    description:
+      'Authors rates, inventory controls, restrictions and yield in InspiredREV, for one hotel, a group or the portfolio. Read-only in Inspire: Inspire’s own revenue_manager can post to folios, which cannot ride a wider grant.',
+    version: 1,
+    assignableAt: ['portfolio', 'group', 'property'],
+    permissions: [],
+    links: {
+      inspire: { role: 'readonly' },
+      inspiredrev: { role: 'revenue_manager' },
+    },
+  },
+  {
+    key: 'sales',
+    name: 'Sales',
+    description:
+      'Authors partner (LNR) rates in InspiredREV for one hotel, a group or the portfolio. Read-only in Inspire.',
+    version: 1,
+    assignableAt: ['portfolio', 'group', 'property'],
+    permissions: [],
+    links: {
+      inspire: { role: 'readonly' },
+      inspiredrev: { role: 'sales' },
+    },
   },
 ];
 

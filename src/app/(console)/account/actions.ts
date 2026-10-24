@@ -3,6 +3,7 @@
 import { prisma } from '../../../db.ts';
 import { currentActor } from '../../../auth/actor.ts';
 import { checkPassword, hashPassword, verifyPassword } from '../../../auth/password.ts';
+import { publishPeople } from '../../../people/publish.ts';
 
 export type AccountState = { error?: string; ok?: string };
 
@@ -33,6 +34,8 @@ export async function changePasswordAction(
   await prisma.auditEvent.create({
     data: { actorId: actor.id, action: 'auth.password_changed', subject: actor.id, detail: {} },
   });
+  // The same password signs in to Inspire and InspiredREV (§2.8).
+  await publishPeople([actor.id], 'password');
 
   return { ok: 'Password changed.' };
 }

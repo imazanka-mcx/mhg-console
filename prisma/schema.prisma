@@ -225,11 +225,16 @@ model Person {
   /// Null until the invitation is accepted and a password is set.
   passwordHash String?      @map("password_hash")
   status       PersonStatus @default(invited)
+  /// Monotonic. Bumped with every change a consumer must hear about — a grant,
+  /// a status, a password (docs/01 §2.8). 0 until the person first enters the
+  /// people stream.
+  personVersion Int         @default(0) @map("person_version")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   grants       Grant[]      @relation("GrantHolder")
+  events       PersonEvent[]
   grantsIssued Grant[]      @relation("GrantedBy")
   auditEvents  AuditEvent[]
 
@@ -254,6 +259,7 @@ model Role {
 
   permissions RolePermission[]
   grants      Grant[]
+  links       RoleLink[]
 
   @@map("role")
 }
@@ -287,6 +293,79 @@ model RolePermission {
   @@map("role_permission")
 }
 
+// ───────────────────────────── The role crosswalk ──────────────────────────
+// docs/01 §2.7. How a console role becomes a role inside Inspire and inside
+// InspiredREV, so one person and one grant reach all three apps. Seeded from
+// src/auth/catalog.ts and src/auth/consumer-roles.ts by `npm run db:seed`;
+// the seed refuses a crosswalk that breaks the firewall.
+
+/// Inspire's org-wide corporate roles are `org`; everything else is held per
+/// property (or, in InspiredREV, scoped by the grant it rides on).
+enum ConsumerTier {
+  org
+  property
+
+  @@map("consumer_tier")
+}
+
+/// A role as a consumer defines it in its own code — a mirror, not a design.
+model ConsumerRole {
+  /// `inspire` or `inspiredrev` — the ShellSubscriber names.
+  consumer String
+  /// The consumer's own role key, e.g. `gm`, `corporate_admin`, `sales`.
+  key      String
+  name     String
+  tier     ConsumerTier
+  /// The consumer's ordering. Higher is more privilege; lateral roles sit low.
+  rank     Int
+  /// Console permission keys this role implies downstream. A console role may
+  /// only link here if it holds all of them (or the link declares why not).
+  carries  String[]
+
+  links RoleLink[]
+
+  @@id([consumer, key])
+  @@map("consumer_role")
+}
+
+/// What one console role may become in one consumer — one row per allowed
+/// consumer role, exactly one of them the default. No rows means no access
+/// there. A GM is `readonly` in InspiredREV by default and may be granted
+/// `revenue_manager` instead; that choice is recorded on the grant.
+model RoleLink {
+  roleKey      String  @map("role_key")
+  consumer     String
+  consumerRole String  @map("consumer_role")
+  /// The role a grant gets when nothing else is chosen. One per role and
+  /// consumer, enforced by the seed.
+  isDefault    Boolean @default(false) @map("is_default")
+  /// Empty unless the link knowingly carries more than the console role holds.
+  /// Then it is the reason, and every seed lists it.
+  exception    String  @default("")
+
+  role   Role         @relation(fields: [roleKey], references: [key], onDelete: Cascade)
+  target ConsumerRole @relation(fields: [consumer, consumerRole], references: [consumer, key])
+
+  @@id([roleKey, consumer, consumerRole])
+  @@index([consumer, consumerRole])
+  @@map("role_link")
+}
+
+/// What one grant became in one consumer, fixed when it was issued. Written
+/// for every consumer the role reaches, default or not, so the people stream
+/// reads it and never has to re-derive it. Changing it is a transfer: close the
+/// grant, open another (§2.5).
+model GrantDownstream {
+  grantId      String @map("grant_id")
+  consumer     String
+  consumerRole String @map("consumer_role")
+
+  grant Grant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@id([grantId, consumer])
+  @@map("grant_downstream")
+}
+
 /// Who can do what, where, and WHEN. Temporal by construction: nothing is ever
 /// deleted, so "who had access on 3 March" is a query rather than an
 /// investigation, and a transfer is one closed grant plus one opened (§2.5).
@@ -311,6 +390,8 @@ model Grant {
   reason      String
 
   createdAt DateTime @default(now()) @map("created_at")
+
+  downstream GrantDownstream[]
 
   person    Person  @relation("GrantHolder", fields: [personId], references: [id])
   grantedBy Person? @relation("GrantedBy", fields: [grantedById], references: [id])
@@ -466,6 +547,24 @@ model ShellEvent {
   @@map("shell_event")
 }
 
+/// One people change notice (docs/01 §2.8). Same outbox discipline as
+/// shell_event: a notice, not a payload — the person is built from current
+/// state at delivery, so replaying from zero converges and a burst of grants
+/// delivers once.
+model PersonEvent {
+  seq           Int      @id @default(autoincrement())
+  personId      String   @map("person_id")
+  personVersion Int      @map("person_version")
+  /// Why — `grant`, `status`, `password`, `profile`, `backfill`.
+  reason        String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@index([personId, seq])
+  @@map("person_event")
+}
+
 /// A system that mirrors the registry. Exactly two exist: Inspire and
 /// InspiredREV (§1.4). Anything else gets the inn code as a label and nothing
 /// more (§1.6).
@@ -488,6 +587,14 @@ model ShellSubscriber {
   lastDeliveredAt DateTime? @map("last_delivered_at")
   /// Empty after a clean delivery. A non-empty value is an Oversight exception.
   lastError       String    @default("") @map("last_error")
+
+  /// The people stream (docs/01 §2.8) rides the same subscription and secret,
+  /// delivered to the sibling /api/registry/v1/people receiver, with its own
+  /// cursor into person_event.
+  peopleCursor          Int       @default(0) @map("people_cursor")
+  peopleLastAttemptAt   DateTime? @map("people_last_attempt_at")
+  peopleLastDeliveredAt DateTime? @map("people_last_delivered_at")
+  peopleLastError       String    @default("") @map("people_last_error")
 
   createdAt DateTime @default(now()) @map("created_at")
 

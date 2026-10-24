@@ -1,6 +1,6 @@
 import { prisma } from '../db.ts';
 import { readSession } from './session.ts';
-import { can, PORTFOLIO, type Actor, type Target } from './access.ts';
+import { can, hasConsoleAccess, PORTFOLIO, type Actor, type Target } from './access.ts';
 
 /**
  * The half of access that needs a request (docs/01 §2.6).
@@ -17,6 +17,9 @@ export async function currentActor(): Promise<Actor | null> {
   if (!session) return null;
   const person = await prisma.person.findUnique({ where: { id: session.personId } });
   if (!person || person.status !== 'active') return null;
+  // Checked per request, not only at sign-in: a corporate seat that is closed
+  // leaves the console on the next click, not when the cookie expires.
+  if (!(await hasConsoleAccess(person.id))) return null;
   return { id: person.id, email: person.email, name: person.name, status: person.status };
 }
 

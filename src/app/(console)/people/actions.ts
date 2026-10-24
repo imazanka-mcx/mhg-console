@@ -9,6 +9,7 @@ import { requirePermission } from '../../../auth/actor.ts';
 import { generateTempPassword, hashPassword } from '../../../auth/password.ts';
 import { ROLES } from '../../../auth/catalog.ts';
 import { ScopeViolation, SCOPES } from '../../../auth/scope.ts';
+import { CONSUMERS, DownstreamChoiceError, type Consumer } from '../../../auth/consumer-roles.ts';
 
 /**
  * Provisioning (docs/01 §2.5).
@@ -78,6 +79,14 @@ export async function inviteAction(
       });
     }
 
+    // Only consumers whose link offers a choice render a picker; the rest take
+    // the default. grantAccess refuses anything the role's link does not allow.
+    const downstream: Partial<Record<Consumer, string>> = {};
+    for (const consumer of CONSUMERS) {
+      const v = String(form.get(`downstream_${consumer}`) ?? '').trim();
+      if (v) downstream[consumer] = v;
+    }
+
     await grantAccess({
       personId: person.id,
       roleKey: input.roleKey,
@@ -85,6 +94,7 @@ export async function inviteAction(
       scopeRef: input.scopeRef ?? null,
       grantedById: actor.id,
       reason: input.reason,
+      downstream,
     });
 
     revalidatePath('/people');
@@ -97,6 +107,7 @@ export async function inviteAction(
         error: `${err.message} — above-property has no oversight of direct billables (docs/29 §3).`,
       };
     }
+    if (err instanceof DownstreamChoiceError) return { error: err.message };
     return { error: err instanceof Error ? err.message : 'Could not grant access.' };
   }
 }

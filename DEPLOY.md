@@ -268,3 +268,55 @@ If a consumer answers `Signature does not match`, its `REGISTRY_SHELL_SECRET`
 is not the one printed — rotate with `subscribe … --rotate --confirm` and set
 the new one. `Could not reach` means the URL or the deploy. Either way nothing
 is lost: the cursor waits, and the next `deliver` resumes from it.
+
+## 9. Going live with the people stream — one account everywhere (docs/01 §2.8)
+
+Three repos, four migrations, nothing destructive. Local accounts in Inspire and
+InspiredREV keep working throughout.
+
+### On the Mac, against each repo's **dev** database first
+
+```bash
+# mhg-console — role_crosswalk, role_link_choices, people_stream
+npx prisma migrate dev && npm run typecheck && npm test && npm run db:seed
+
+# mhotels-inspire — sales_role, registry_people
+npx prisma migrate dev && npx tsc --noEmit && npm run test:registry
+
+# mhg-inspiredrev — registry_people
+npx prisma migrate dev && npx tsc --noEmit && npm run test:registry
+```
+
+### Deploy, in this order
+
+1. **Inspire** and **InspiredREV** — push `main`. Both receivers ship before anything
+   sends to them. No new environment variables: they reuse `REGISTRY_SHELL_SECRET`,
+   and `REGISTRY_URL` defaults to production.
+2. **The console** — push `main`, then seed production once (deploys migrate but do
+   not seed):
+
+   ```bash
+   DATABASE_URL="<prod pooled>" DIRECT_URL="<prod direct>" npm run db:seed
+   ```
+
+### First delivery — from the Mac, `.env` on production
+
+```bash
+npm run shell -- backfill --confirm     # InspiredREV learns each property's groups
+npm run shell -- deliver
+npm run people -- backfill --confirm    # every existing person, once
+npm run people -- deliver
+npm run people -- subscribers           # both current, no errors
+npm run people -- show --email <you>    # what each app receives
+```
+
+### Then
+
+- Grant yourself (or `mhg@…`) access on People. Sign in to Inspire and InspiredREV
+  with that email and the console password.
+- Change the password under Account in either app; sign in to the other with the new one.
+- Retire local placeholder accounts such as `corporate@mhotels.test` once a
+  console-managed corporate admin can stand up properties.
+
+If a consumer answers `Signature does not match` or `Could not reach`, it is the same
+diagnosis as §8 — the people stream rides the same secret and host.

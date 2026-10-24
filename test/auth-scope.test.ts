@@ -10,6 +10,7 @@ import {
   ScopeViolation,
 } from '../src/auth/scope.ts';
 import { PERMISSIONS, ROLES, permissionsFor, roleByKey } from '../src/auth/catalog.ts';
+import { consumerRole } from '../src/auth/consumer-roles.ts';
 
 describe('the direct-bill firewall (docs/29 §3, docs/01 §2.3)', () => {
   const arView = { key: 'ar.view', scopeMax: 'property' } as const;
@@ -87,13 +88,21 @@ describe('the seeded catalog obeys its own rule', () => {
     }
   });
 
-  test('no role carries an A/R permission yet — Inspire enforces those (§4 step 5)', () => {
-    const capped = new Set(
+  test('a role carries a downstream permission only because its link does (§2.7)', () => {
+    // The console does not hold A/R or posting authority for its own sake. A
+    // role carries one of those keys exactly when the Inspire role it becomes
+    // carries it — so the firewall on the console role is the firewall on the
+    // link, and nothing is held here that nothing downstream enforces.
+    const downstream = new Set(
       PERMISSIONS.filter((p) => p.ownedBy !== 'console').map((p) => p.key),
     );
     for (const role of ROLES) {
-      for (const key of role.permissions) {
-        assert.ok(!capped.has(key), `role ${role.key} should not yet carry ${key}`);
+      const target = role.links.inspire ? consumerRole('inspire', role.links.inspire.role) : undefined;
+      for (const key of role.permissions.filter((k) => downstream.has(k))) {
+        assert.ok(
+          target?.carries.includes(key),
+          `role ${role.key} holds ${key}, but its Inspire role does not carry it`,
+        );
       }
     }
   });
