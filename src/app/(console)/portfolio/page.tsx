@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import { MHG_BRANDS } from '@mcx/inn-code';
 
 import { registryFor } from '../../../issuance.ts';
+import { NewPropertyButton } from './new/new-property-form.tsx';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,10 +15,13 @@ const STATUS_STYLE: Record<string, string> = {
 export default async function PortfolioPage() {
   const codes = await registryFor().list();
   const live = codes.filter((c) => c.status !== 'retired');
+  // The closed brand table (B1) is the library's, not a copy kept here — one
+  // table, or the flag on the door stops meaning one thing.
+  const brands = MHG_BRANDS.filter((b) => !b.retired).map((b) => ({ code: b.code, name: b.name }));
 
   return (
     <div className="max-w-5xl">
-      <div className="flex items-end justify-between">
+      <div className="flex items-start justify-between gap-6">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Portfolio</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -24,12 +29,7 @@ export default async function PortfolioPage() {
             uniqueness is checked against history, not just the live portfolio (G3).
           </p>
         </div>
-        <Link
-          href="/portfolio/new"
-          className="rounded bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-        >
-          New property
-        </Link>
+        <NewPropertyButton brands={brands} />
       </div>
 
       {codes.length === 0 ? (

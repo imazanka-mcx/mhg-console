@@ -1,7 +1,6 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
 import { requirePermission } from '../../../../auth/actor.ts';
@@ -46,7 +45,8 @@ export type ProposeState =
 
 export type IssueState =
   | { kind: 'idle' }
-  | { kind: 'refused'; rule: string; message: string };
+  | { kind: 'refused'; rule: string; message: string }
+  | { kind: 'issued'; code: string; propertyId: string };
 
 function toRequest(parsed: z.infer<typeof Input>): IssueRequest {
   const req: IssueRequest = {
@@ -144,6 +144,8 @@ export async function issueAction(_prev: IssueState, form: FormData): Promise<Is
     return { kind: 'refused', rule: result.failure.rule, message: result.failure.message };
   }
 
+  // Returned rather than redirected: the flow lives in a dialog on Portfolio,
+  // which shows the claimed code and a way into the new property.
   revalidatePath('/portfolio');
-  redirect(`/portfolio?issued=${result.record.code}`);
+  return { kind: 'issued', code: result.record.code, propertyId: result.record.propertyId };
 }

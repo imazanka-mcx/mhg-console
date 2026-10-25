@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useFormState, useFormStatus } from 'react-dom';
 
+import { ModalButton, ModalHeader, SECONDARY } from '../../modal-button.tsx';
+
 import {
   issueAction,
   proposeAction,
@@ -42,33 +44,68 @@ function Trace({ steps }: { steps: { rule: string; detail: string }[] }) {
   );
 }
 
-export function NewPropertyForm({ brands }: { brands: { code: string; name: string }[] }) {
+/** "+ New property" — propose and claim in a dialog, like the other "+ New" buttons. */
+export function NewPropertyButton({ brands }: { brands: { code: string; name: string }[] }) {
+  return (
+    <ModalButton label="+ New property" labelledBy="new-property-title">
+      {(close) => <NewPropertyForm brands={brands} onClose={close} />}
+    </ModalButton>
+  );
+}
+
+function NewPropertyForm({
+  brands,
+  onClose,
+}: {
+  brands: { code: string; name: string }[];
+  onClose: () => void;
+}) {
   const [proposal, propose] = useFormState<ProposeState, FormData>(proposeAction, { kind: 'idle' });
   const [issue, confirm] = useFormState<IssueState, FormData>(issueAction, { kind: 'idle' });
 
   const errors = proposal.kind === 'invalid' ? proposal.errors : {};
 
-  return (
-    <div className="max-w-2xl">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">New property</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            The code is derived, not typed. You will see it and the rules that produced it before
-            anything is claimed.
-          </p>
+  if (issue.kind === 'issued') {
+    return (
+      <div className="p-6">
+        <ModalHeader id="new-property-title" title="New property" onClose={onClose} />
+        <div className="mt-5 flex items-baseline gap-3">
+          <span className="font-mono text-3xl font-semibold tracking-tight text-slate-900">
+            {issue.code}
+          </span>
+          <span className="text-xs text-success-700">claimed</span>
         </div>
-        <Link href="/portfolio" className="text-sm text-brand-600 hover:underline">
-          ← Portfolio
-        </Link>
+        <p className="mt-3 text-sm text-slate-600">
+          In the registry now, and on its way to Inspire and InspiredREV on the shell stream.
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className={SECONDARY}>
+            Done
+          </button>
+          <Link
+            href={`/portfolio/${issue.propertyId}`}
+            className="rounded bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            Open {issue.code}
+          </Link>
+        </div>
       </div>
+    );
+  }
 
-      <form action={propose} className="mt-6 space-y-5 rounded-lg bg-white p-6 shadow-sm">
+  return (
+    <div className="max-h-[85vh] overflow-y-auto p-6">
+      <ModalHeader id="new-property-title" title="New property" onClose={onClose}>
+        The code is derived, not typed. You will see it and the rules that produced it before
+        anything is claimed.
+      </ModalHeader>
+
+      <form action={propose} className="mt-5 space-y-5">
         <div>
           <label className={LABEL} htmlFor="name">
             Property name
           </label>
-          <input id="name" name="name" maxLength={120} className={INPUT} />
+          <input id="name" name="name" maxLength={120} autoFocus className={INPUT} />
           <p className="mt-1 text-xs text-slate-400">
             Optional — defaults to the brand and city.
           </p>
@@ -195,9 +232,14 @@ export function NewPropertyForm({ brands }: { brands: { code: string; name: stri
           </div>
         </div>
 
-        <div className="flex items-center gap-3 pt-1">
-          <Submit variant="quiet">Propose a code</Submit>
-          <span className="text-xs text-slate-400">Reads the registry. Writes nothing.</span>
+        <div className="flex items-center justify-end gap-3 pt-1">
+          <span className="mr-auto text-xs text-slate-400">Reads the registry. Writes nothing.</span>
+          <button type="button" onClick={onClose} className={SECONDARY}>
+            Cancel
+          </button>
+          <Submit variant={proposal.kind === 'proposed' ? 'quiet' : 'primary'}>
+            {proposal.kind === 'proposed' ? 'Propose again' : 'Propose a code'}
+          </Submit>
         </div>
       </form>
 
@@ -211,7 +253,7 @@ export function NewPropertyForm({ brands }: { brands: { code: string; name: stri
       ) : null}
 
       {proposal.kind === 'proposed' ? (
-        <div className="mt-5 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-5">
           <div className="flex items-baseline gap-3">
             <span className="font-mono text-3xl font-semibold tracking-tight text-slate-900">
               {proposal.code}
