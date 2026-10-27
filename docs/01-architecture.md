@@ -240,8 +240,8 @@ a status. Every move is audited with a reason and published.
 
 | Stage | Console | Inspire | InspiredREV |
 |---|---|---|---|
-| Claim (LOI, G6) | code + market claimed, `pipeline`, published | mirror row; **Stand up** offered on `/corporate` | directory row created, no Inspire key needed |
-| Stand-up | — | `/corporate/properties/new?registry=…` builds the Property with the registry's code, name, brand, clock and money, linked by id | — |
+| Claim (LOI, G6) | code + market claimed, `pipeline`, published | mirror row; **Stand up** offered on `/admin/stand-up` | directory row created, no Inspire key needed |
+| Stand-up | — | `/admin/stand-up/new?registry=…` builds the Property with the registry's code, name, brand, clock and money, linked by id | — |
 | Open | `active`, published | mirror status updates | `registry_status` updates |
 | Rebrand | new code, old retired, same id, published | live Property relabelled in place | directory row relabelled in place |
 | Exit | `retired`, terminal, published | mirror shows retired; nothing deleted | `registry_status` = retired |
@@ -762,8 +762,9 @@ property (everyone else).
 
 ## 3. Sections
 
-Inspire's `/corporate` today is coding, companies, gl, properties, requests — a
-corporate-flavored PMS admin. This app has five sections instead:
+Inspire's `/corporate` was coding, companies, gl, properties, requests — a
+corporate-flavored PMS admin. It is gone (§4 step 7, 2026-10-27). This app has five
+sections instead:
 
 1. **Portfolio** — the property registry. Code, brand, status, groups, lifecycle,
    provisioning health. New Property (the generator) lives here.
@@ -783,6 +784,11 @@ Plus **Audit** — append-only, same shape as Inspire's and InspiredREV's `Audit
 and genuinely corporate, but PMS configuration by the discipline test. They can move
 here under Standards or Finance — as the acknowledged exception, not as something that
 sets the tone.
+
+**Settled 2026-10-27: they stay in Inspire.** So do room-type requests and CNR accounts
+(A/R-adjacent, so firewall territory). All four moved under Inspire's Admin, in a
+corporate-only **MHG Corporate** group; nothing new crosses the wire. Revisit only if a
+second PMS ever needs the same coding standard or chart.
 
 ### 3.1 Oversight is exception-first
 
@@ -870,7 +876,7 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
    stays as the column in Inspire; it now only ever receives an issued code.
 
    **Inspire's side, 2026-10-03.** Inspire's Add Property form now sends MHG flags to
-   the registry: a registry code arrives on `/corporate` with **Stand up**, which fills
+   the registry: a registry code arrives on `/admin/stand-up` with **Stand up**, which fills
    identity from the shell and is not typed; the free-text form remains only for houses
    outside the MHG flags, and refuses any code the registry has issued.
 
@@ -914,10 +920,28 @@ Data model before cosmetics, or the redesign is paint on the old nouns.
    `registry_property` mirror and InspiredREV's directory. Nothing that worked stops
    working: Inspire's `GET /api/integration/v1/property` still answers, InspiredREV's
    pull still runs, and a consumer row only becomes registry-owned when a shell adopts
-   it. The comparison §6 asked for is on Inspire's `/corporate` page (drift column) and
+   it. The comparison §6 asked for is on Inspire's `/admin/stand-up` page (drift column) and
    in each consumer's `audit_log` (`registry_link` / `registry_sync` rows record every
    before/after).
-7. **Strip the PMS screens** from Inspire's `/corporate`.
+7. **Strip the PMS screens** from Inspire's `/corporate` — **done 2026-10-27.**
+   `/corporate` no longer exists in Inspire. What it held split by the discipline test:
+
+   - **To this app:** identity and people. Property detail and admin appointment were
+     already redundant — Portfolio and People here, and Inspire's Admin → Users & Roles
+     provisions through the console at a registry hotel — so Inspire's per-property page
+     and `appointPropertyAdmin` were deleted rather than ported.
+   - **Stayed in Inspire, under Admin → MHG Corporate** (`corporate_admin` only):
+     Property Stand-up (`/admin/stand-up`), Coding Standard, Room-type requests, GL chart,
+     CNR accounts. See §3.
+   - **Stand-up stays an Inspire action, started from here.** It stamps opening business
+     date, tax rates and the starter pack — PMS config this app never holds (§1.3) — and
+     running it as a signed call from here would put the console on the path of opening
+     a hotel (R2). `/portfolio/[id]` links to Inspire's stand-up page for that property,
+     derived from Inspire's shell subscription URL (`src/shell/stand-up.ts`), so it needs
+     no setting. `test/stand-up-link.test.ts` checks the target page exists in the sibling
+     checkout.
+   - Inspire's nav link is now **MHG Console ↗**; `next.config.mjs` there redirects every
+     old `/corporate/*` path. Inspire's `docs/31` has the old → new table.
 8. **Subscribe InspiredREV to the shell stream**; retire its per-property `isk_`
    directory keys. Operational `isk_` keys — OpsCore's included — are untouched.
 

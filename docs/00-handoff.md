@@ -164,7 +164,7 @@ Built and **verified end to end against the live Neon database**:
   to Inspire and InspiredREV: an outbox of change notices (`shell_event`), a
   cursor per consumer (`shell_subscriber`), signed batches to each consumer's
   `POST /api/registry/v1/shell`, idempotent by `shellVersion`. Inspire mirrors
-  every code into `registry_property` and offers **Stand up** on `/corporate`;
+  every code into `registry_property` and offers **Stand up** on `/corporate` (now `/admin/stand-up`);
   InspiredREV creates directory rows for pipeline properties with no Inspire
   at all — the §6.2 break is closed. The lifecycle is a rule
   (`src/lifecycle.ts`: forward only, retired terminal), and `/portfolio/[id]`
@@ -200,7 +200,8 @@ Built and **verified end to end against the live Neon database**:
    scope to be granted at, which was the other half of that problem (§2.6).
 2. **Go live with the shell stream** (`DEPLOY.md §8`), then watch a real
    rebrand and a real opening go through before relying on it.
-3. **Strip the PMS screens** from Inspire's `/corporate`.
+3. ~~**Strip the PMS screens** from Inspire's `/corporate`.~~ Done 2026-10-27 —
+   `docs/01 §4 step 7`.
 4. **Decide what `grant.scope_ref` holds at property scope** — the inn code
    (today) or the internal id. `docs/01 §5` states the three options. Nothing
    forces it until the first rebrand of a hotel somebody holds a property grant

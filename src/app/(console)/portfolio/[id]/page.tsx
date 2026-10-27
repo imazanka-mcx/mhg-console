@@ -18,6 +18,7 @@ import {
 } from '../../../../orgs/rules.ts';
 import { COMMON_TIMEZONES } from '../../../../setup.ts';
 import { provisioningFor } from '../../../../shell/publish.ts';
+import { standUpUrl } from '../../../../shell/stand-up.ts';
 import {
   AssetForm,
   AssignManagementForm,
@@ -117,6 +118,9 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
   const status = property.status as PropertyStatus;
   const moves = nextStatuses(status).map((m) => ({ to: m.to, label: TRANSITION_LABELS[m.transition] }));
+  // Stand-up runs in Inspire (src/shell/stand-up.ts); nothing to stand up once retired.
+  const inspireSub = provisioning.find((row) => row.subscriber === 'inspire');
+  const standUp = inspireSub && status !== 'retired' ? standUpUrl(inspireSub.url, property.id) : null;
   const pastOpening =
     status === 'pipeline' &&
     property.expectedOpenDate !== '' &&
@@ -432,6 +436,16 @@ export default async function PropertyPage({ params }: { params: { id: string } 
             </tbody>
           </table>
         )}
+        {standUp ? (
+          <p className="mt-4 text-sm">
+            <a href={standUp} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-600 hover:underline">
+              Stand up in Inspire ↗
+            </a>
+            <span className="ml-2 text-xs text-slate-400">
+              Builds the hotel&apos;s PMS there — opening date, taxes, starter pack. Inspire says so if it is already stood up.
+            </span>
+          </p>
+        ) : null}
         {held.has('property.status') && provisioning.length ? (
           <div className="mt-4">
             <DeliverNow propertyId={property.id} />
